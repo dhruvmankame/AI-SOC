@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI-SOC — Research, Architecture & Implementation Blueprint</title>
+<style>
+:root{
+  --bg:#08111f; --panel:#0f1b2d; --panel2:#132238; --text:#e8eef7; --muted:#9fb0c7;
+  --line:#253b59; --cyan:#55d6e8; --green:#65d49b; --amber:#ffcc70; --red:#ff7d8c;
+  --purple:#b49cff; --blue:#75a7ff; --white:#fff; --shadow:0 12px 36px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:linear-gradient(180deg,#07101d 0%,#0a1424 100%);color:var(--text);
+font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.55}
+a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}
+header{padding:58px 22px 42px;border-bottom:1px solid var(--line);background:
+radial-gradient(circle at 15% 20%,rgba(85,214,232,.16),transparent 27%),
+radial-gradient(circle at 85% 5%,rgba(180,156,255,.14),transparent 30%)}
+.wrap{max-width:1220px;margin:0 auto}
+.kicker{color:var(--cyan);font-weight:800;letter-spacing:.13em;text-transform:uppercase;font-size:.78rem}
+h1{font-size:clamp(2.1rem,5vw,4.6rem);line-height:1.02;margin:.35rem 0 1rem;max-width:1050px}
+.subtitle{max-width:920px;color:#c6d4e7;font-size:1.14rem}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.badge{border:1px solid var(--line);background:rgba(19,34,56,.75);padding:7px 10px;border-radius:999px;color:#d9e6f7;font-size:.86rem}
+.controls{display:flex;gap:10px;margin-top:24px;flex-wrap:wrap}
+button{background:var(--cyan);border:0;border-radius:10px;padding:10px 14px;font-weight:800;color:#06202a;cursor:pointer}
+button.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}
+.layout{display:grid;grid-template-columns:260px 1fr;gap:26px;max-width:1280px;margin:0 auto;padding:28px 20px 80px}
+aside{position:sticky;top:12px;height:calc(100vh - 24px);overflow:auto;border:1px solid var(--line);background:rgba(15,27,45,.92);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+aside h3{margin:2px 0 12px;font-size:.95rem;color:#cde2ff}
+aside a{display:block;padding:7px 8px;border-radius:8px;color:var(--muted);font-size:.88rem}
+aside a:hover{background:#14253d;color:var(--white);text-decoration:none}
+main{min-width:0}
+section{scroll-margin-top:18px;margin-bottom:30px;border:1px solid var(--line);background:rgba(15,27,45,.84);border-radius:18px;padding:26px;box-shadow:var(--shadow)}
+h2{margin:0 0 14px;font-size:1.65rem} h3{margin-top:24px;color:#dfeaff} h4{color:#d5e3f7}
+p{color:#c4d1e3}
+strong{color:#fff}
+.callout{border-left:4px solid var(--cyan);background:#0b2030;padding:14px 16px;border-radius:8px;margin:14px 0;color:#dceaf5}
+.warn{border-left-color:var(--amber);background:#261f11}
+.good{border-left-color:var(--green);background:#10261e}
+.risk{border-left-color:var(--red);background:#2a141b}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{border:1px solid var(--line);background:var(--panel2);border-radius:13px;padding:16px}
+.card h3,.card h4{margin-top:0}.metric{font-size:1.7rem;font-weight:900;color:var(--cyan)}
+table{width:100%;border-collapse:collapse;font-size:.91rem;margin:14px 0 4px}
+th,td{border:1px solid var(--line);padding:10px;vertical-align:top}
+th{background:#14253d;color:#eaf3ff;text-align:left;position:sticky;top:0}
+td{color:#c3d0e2} tr:nth-child(even) td{background:rgba(12,26,44,.45)}
+.small{font-size:.85rem;color:var(--muted)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#08111f;border:1px solid #203553;padding:.15em .35em;border-radius:5px;color:#bfeafa}
+pre{white-space:pre-wrap;background:#07111e;border:1px solid var(--line);padding:16px;border-radius:12px;overflow:auto;color:#c9e7ef}
+ul,ol{color:#c4d1e3;padding-left:22px} li{margin:6px 0}
+.flow{display:flex;align-items:center;gap:8px;overflow:auto;padding:12px 2px 18px}
+.node{min-width:145px;max-width:190px;padding:13px;border:1px solid #315275;border-radius:12px;background:#10223a;text-align:center;font-weight:750;color:#eaf5ff}
+.arrow{color:var(--cyan);font-weight:900;font-size:1.4rem}
+.arch{display:grid;grid-template-columns:1fr;gap:10px}
+.layer{border:1px solid var(--line);border-radius:13px;padding:14px;background:#0b1727}
+.layer-title{font-weight:900;color:var(--cyan);margin-bottom:8px}
+.pills{display:flex;flex-wrap:wrap;gap:8px}.pill{padding:7px 9px;border-radius:8px;background:#162a43;border:1px solid #2b4868;color:#d6e7fb;font-size:.86rem}
+.tag{display:inline-block;padding:3px 7px;border-radius:6px;background:#1c3352;color:#dbeaff;font-size:.78rem;margin:2px}
+.tag.green{background:#173727;color:#a9f1c9}.tag.amber{background:#3a2e13;color:#ffe0a1}.tag.red{background:#3c1820;color:#ffb4bc}.tag.purple{background:#2e2552;color:#d9ccff}
+.timeline{border-left:2px solid #355371;margin-left:8px;padding-left:18px}.timeline .item{margin:0 0 18px}.timeline b{color:#fff}
+.src{font-size:.82rem;color:#93a9c2}
+hr{border:0;border-top:1px solid var(--line);margin:26px 0}
+details{border:1px solid var(--line);border-radius:10px;background:#0c1a2b;margin:9px 0;padding:10px 13px}
+summary{cursor:pointer;font-weight:800;color:#dfeaff}
+.footer{max-width:1220px;margin:0 auto;padding:0 24px 60px;color:#7f95af}
+@media(max-width:980px){.layout{grid-template-columns:1fr} aside{position:relative;height:auto}.g2,.g3{grid-template-columns:1fr} th{position:static}}
+@media print{body{background:white;color:black}header,section,aside{background:white;color:black;box-shadow:none}.layout{display:block}aside,.controls{display:none}section{break-inside:avoid;border-color:#aaa}p,td,li,.small,.src{color:#222}h1,h2,h3,h4,strong{color:#000}a{color:#0645ad}.node,.layer,.card,pre{background:#fff;color:#111;border-color:#999}}
+</style>
+<script>
+function expandAll(){
+ document.querySelectorAll('details').forEach(d=>d.open=true);
+}
+function collapseAll(){
+ document.querySelectorAll('details').forEach(d=>d.open=false);
+}
+</script>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="kicker">Project Research & Engineering Blueprint · 26 September 2026</div>
+    <h1>AI-SOC: A Multi-Agent Deep Learning System for Automated Security Log Analysis, Threat Detection and Incident Investigation</h1>
+    <p class="subtitle">A buildable data-science + cybersecurity project plan covering problem research, market landscape, research foundations, architecture, multi-agent design, deep-learning pipeline, frontend/backend stack, storage, APIs, security controls, evaluation, datasets, milestones and final implementation scope.</p>
+    <div class="badges">
+      <span class="badge">Hybrid SIEM + UEBA + Deep Learning</span>
+      <span class="badge">Multi-Agent Investigation</span>
+      <span class="badge">OCSF-normalized telemetry</span>
+      <span class="badge">MITRE ATT&amp;CK + Sigma</span>
+      <span class="badge">Human-in-the-loop response</span>
+      <span class="badge">Open-source-first architecture</span>
+    </div>
+    <div class="controls">
+      <button onclick="window.print()">Print / Save as PDF</button>
+      <button class="secondary" onclick="expandAll()">Expand details</button>
+      <button class="secondary" onclick="collapseAll()">Collapse details</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+<aside>
+  <h3>Contents</h3>
+  <a href="#executive">1. Executive recommendation</a>
+  <a href="#problem">2. Problem statement</a>
+  <a href="#goals">3. Goals & non-goals</a>
+  <a href="#market">4. Existing market solutions</a>
+  <a href="#gaps">5. Gap / opportunity analysis</a>
+  <a href="#research">6. Research foundations</a>
+  <a href="#architecture">7. Proposed architecture</a>
+  <a href="#agents">8. Multi-agent design</a>
+  <a href="#detection">9. Detection & deep learning</a>
+  <a href="#data">10. Data model & normalization</a>
+  <a href="#stack">11. Recommended tech stack</a>
+  <a href="#frontend">12. Frontend design</a>
+  <a href="#backend">13. Backend & APIs</a>
+  <a href="#security">14. Security & AI guardrails</a>
+  <a href="#efficiency">15. Efficiency strategy</a>
+  <a href="#evaluation">16. Evaluation plan</a>
+  <a href="#datasets">17. Datasets</a>
+  <a href="#implementation">18. Implementation roadmap</a>
+  <a href="#repo">19. Repository structure</a>
+  <a href="#demo">20. Demo scenarios</a>
+  <a href="#risks">21. Risks & limitations</a>
+  <a href="#deliverables">22. Final deliverables</a>
+  <a href="#sources">23. Research sources</a>
+</aside>
+
+<main>
+
+<section id="executive">
+<h2>1. Executive recommendation</h2>
+<div class="callout good"><strong>Recommended project direction:</strong> build an <strong>evidence-first AI-SOC</strong> with two separate planes: a high-throughput <strong>Detection Plane</strong> that processes every event cheaply, and a selective <strong>Agentic Investigation Plane</strong> that only activates for correlated, high-value alerts. This is more realistic, measurable and efficient than sending raw logs to an LLM.</div>
+<div class="grid g3">
+  <div class="card"><div class="metric">1</div><h4>Detection Plane</h4><p>Parsing, OCSF normalization, Sigma/IOC checks, statistical signals, deep sequence anomaly detection and entity risk scoring.</p></div>
+  <div class="card"><div class="metric">2</div><h4>Correlation Plane</h4><p>Deduplicate signals, group events by entity/time/causal relationships, build a case and calculate an incident risk score.</p></div>
+  <div class="card"><div class="metric">3</div><h4>Agentic Investigation Plane</h4><p>Specialist agents query evidence, CTI, ATT&amp;CK mappings and historical cases, then produce a cited investigation narrative and recommended next steps.</p></div>
+</div>
+<p><strong>Recommended frontend:</strong> Next.js + TypeScript + Tailwind CSS + ECharts/Apache ECharts + React Flow. <strong>Recommended backend:</strong> FastAPI + Python. <strong>Recommended orchestration:</strong> LangGraph. <strong>Primary telemetry store:</strong> ClickHouse. <strong>Operational store:</strong> PostgreSQL with pgvector. <strong>Streaming:</strong> Redpanda (Kafka API compatible) or Kafka. <strong>ML:</strong> PyTorch + scikit-learn + MLflow. <strong>Collector:</strong> Vector or Fluent Bit.</p>
+<p>The project's defensible novelty should be: <strong>(a)</strong> tiered inference that minimizes expensive AI usage, <strong>(b)</strong> evidence-linked multi-agent investigations, <strong>(c)</strong> combined rule + statistical + deep sequence + behavior detection, <strong>(d)</strong> transparent risk fusion, <strong>(e)</strong> reproducible evaluation on public datasets, and <strong>(f)</strong> explicit AI safety controls.</p>
+</section>
+
+<section id="problem">
+<h2>2. Detailed problem statement</h2>
+<p>Modern Security Operations Centers must ingest telemetry from endpoints, operating systems, cloud services, applications, identity platforms, network devices and security tools. The difficult part is not simply storing logs; it is converting heterogeneous, noisy events into a small number of trustworthy incidents that an analyst can understand and act on quickly.</p>
+
+<h3>Core problems the system must solve</h3>
+<table>
+<tr><th>Problem</th><th>Why it is difficult</th><th>Project response</th></tr>
+<tr><td>Heterogeneous log formats</td><td>Different vendors use different fields, timestamps, names and semantics.</td><td>Collector transforms + parser templates + OCSF-aligned common event model.</td></tr>
+<tr><td>High event volume</td><td>Most events are benign; applying expensive models to every event wastes compute.</td><td>Streaming filters, deduplication, rules and lightweight scoring before deep/LLM inference.</td></tr>
+<tr><td>Known + unknown attacks</td><td>Rules detect known behavior but miss novel patterns; anomaly models can be noisy.</td><td>Hybrid detection: Sigma/IOC + statistical + supervised ML + sequence anomaly + UEBA.</td></tr>
+<tr><td>Alert fatigue</td><td>Individual alerts often represent fragments of one attack.</td><td>Entity/time correlation and incident clustering before analyst presentation.</td></tr>
+<tr><td>Slow investigation</td><td>Analysts pivot manually across users, hosts, processes, IPs and threat intelligence.</td><td>Specialist investigation agents working over structured evidence and common incident state.</td></tr>
+<tr><td>LLM hallucination</td><td>An AI can produce plausible but unsupported explanations.</td><td>Evidence IDs, source provenance, constrained tools, verifier agent and “unsupported claim” rejection.</td></tr>
+<tr><td>Unsafe automation</td><td>Autonomous containment can disrupt production.</td><td>Recommendation-first workflow; approvals for high-impact actions; simulation mode by default.</td></tr>
+<tr><td>Changing environments</td><td>Normal behavior and log templates drift over time.</td><td>Model monitoring, template drift tracking, retraining pipeline and analyst feedback loop.</td></tr>
+</table>
+
+<div class="callout"><strong>Formal research question:</strong> Can a hybrid, multi-stage AI-SOC reduce the number of events requiring expensive analysis while maintaining or improving threat-detection quality, and can a multi-agent investigation layer produce faster, evidence-grounded incident narratives than a single-agent or manual-style baseline?</div>
+
+<h3>Suggested academic problem statement</h3>
+<p>“Existing SOC workflows face challenges in heterogeneous telemetry normalization, alert volume, false positives and manual investigation overhead. This project proposes a multi-agent deep learning system that combines real-time log normalization, hybrid threat detection, sequence-based anomaly detection, entity behavior analytics, alert correlation and evidence-grounded agentic investigation. The system is evaluated on detection quality, alert reduction, investigation latency, evidence coverage, hallucination rate and computational cost.”</p>
+</section>
+
+<section id="goals">
+<h2>3. Goals, scope and non-goals</h2>
+<div class="grid g2">
+<div class="card">
+<h3>Must implement</h3>
+<ul>
+<li>Multi-source log ingestion: JSON, Syslog and CSV replay.</li>
+<li>Parsing, normalization and enrichment into a common schema.</li>
+<li>Real-time searchable log store.</li>
+<li>Sigma-like rule engine and IOC matching.</li>
+<li>Deep-learning anomaly model over log-event sequences.</li>
+<li>Behavior/entity risk scoring.</li>
+<li>Alert deduplication and incident correlation.</li>
+<li>Multi-agent incident investigation with evidence provenance.</li>
+<li>MITRE ATT&amp;CK mapping and timeline/attack graph.</li>
+<li>Analyst dashboard, live alerts, incident workbench and model metrics.</li>
+<li>Human approval boundary for response actions.</li>
+<li>Training/evaluation pipeline with documented benchmarks.</li>
+</ul>
+</div>
+<div class="card">
+<h3>Keep outside the MVP</h3>
+<ul>
+<li>Trying to replace a production enterprise SIEM at petabyte scale.</li>
+<li>Fully autonomous endpoint isolation or account deletion.</li>
+<li>Malware reverse engineering and exploit generation.</li>
+<li>Dozens of proprietary commercial integrations.</li>
+<li>Training a foundation LLM from scratch.</li>
+<li>Building a full endpoint agent or EDR kernel driver.</li>
+<li>Claiming “zero false positives.”</li>
+</ul>
+<p class="small">These can be presented as future work rather than weakening the core prototype with too much scope.</p>
+</div>
+</div>
+</section>
+
+<section id="market">
+<h2>4. Existing solutions already in the market</h2>
+<p class="small">The table below summarizes documented vendor capabilities as of the research date. Performance/ROI figures stated by vendors should be treated as vendor claims, not independent benchmarks.</p>
+<table>
+<tr><th>Platform</th><th>What it already does</th><th>AI / agentic direction</th><th>What to learn from it</th></tr>
+<tr>
+<td><strong>Microsoft Sentinel / Defender ISOC</strong></td>
+<td>Cloud-native SIEM, unified security platform, cross-platform telemetry, hunting, investigation and response.</td>
+<td>Microsoft describes Sentinel as an AI-first foundation for agentic defense and, in September 2026, announced an integrated SOC architecture in Defender with shared signals/context for people and agents. <a href="https://learn.microsoft.com/en-us/azure/sentinel/sentinel-overview">[S1]</a> <a href="https://www.microsoft.com/en-us/security/blog/2026/09/23/reimagining-the-soc-for-the-agentic-era-in-microsoft-defender/">[S2]</a></td>
+<td>Shared security context and a single investigation substrate are now table stakes.</td>
+</tr>
+<tr>
+<td><strong>CrowdStrike Falcon Next-Gen SIEM + Charlotte AI</strong></td>
+<td>Cross-domain data, streaming pipeline, detection, search, case management and response.</td>
+<td>Coordinates specialist agents across endpoint, identity, SaaS, cloud and network with shared context; also emphasizes governed automation and auditability. <a href="https://www.crowdstrike.com/en-us/platform/next-gen-siem/">[S3]</a> <a href="https://ir.crowdstrike.com/news-releases/news-release-details/crowdstrike-unveils-next-evolution-agentic-soc">[S4]</a></td>
+<td>Multi-agent coordination should operate over a common incident memory, not separate isolated chats.</td>
+</tr>
+<tr>
+<td><strong>Google Security Operations</strong></td>
+<td>SIEM + SOAR + threat intelligence, curated detections, YARA-L, case management and large-scale search.</td>
+<td>Gemini supports natural-language search, summaries, recommended actions, detection/playbook generation and a Triage &amp; Investigation agent. <a href="https://cloud.google.com/security/products/security-operations">[S5]</a> <a href="https://cloud.google.com/solutions/security/agentic-soc">[S6]</a></td>
+<td>Combine deterministic detections with AI; AI should accelerate the analyst rather than be the only detector.</td>
+</tr>
+<tr>
+<td><strong>Splunk Enterprise Security</strong></td>
+<td>Unified TDIR, SIEM, SOAR and UEBA.</td>
+<td>2026 documentation lists AI SOC analyst, detection engineer, architect and threat-hunter workflows; triage agent can autonomously investigate findings and present a rationale and next steps. <a href="https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.6/ai-assistant-in-security-and-agentic-capabilities/agentic-ai-offerings-in-splunk-enterprise-security">[S7]</a> <a href="https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.5/ai-assistant-in-security-and-agentic-capabilities/setting-up-the-triage-agent">[S8]</a></td>
+<td>Specialize agents by SOC role and record their outputs inside the investigation workflow.</td>
+</tr>
+<tr>
+<td><strong>Elastic Security</strong></td>
+<td>Search-centric security analytics, alerting, investigation and AI tooling.</td>
+<td>Attack Discovery uses LLMs to analyze alerts, group them into attack narratives, map them to ATT&amp;CK and surface implicated users/hosts. <a href="https://www.elastic.co/docs/solutions/security/ai/attack-discovery">[S9]</a></td>
+<td>Correlation into an “attack story” is more useful than summarizing isolated alerts.</td>
+</tr>
+<tr>
+<td><strong>Securonix Unified Defense SIEM</strong></td>
+<td>Normalized cloud/identity/endpoint/network telemetry, detection, investigation, response and compliance.</td>
+<td>Agentic Mesh coordinates specialized agents with shared context, policy controls and human oversight. <a href="https://www.securonix.com/products/agentic-ai/">[S10]</a></td>
+<td>Governance, separation of orchestration/execution, reversibility and audit trails are first-class architecture requirements.</td>
+</tr>
+<tr>
+<td><strong>Exabeam New-Scale Fusion</strong></td>
+<td>Cloud-native SIEM + UEBA/behavior analytics + dynamic risk scoring + automation.</td>
+<td>Exabeam Nova uses coordinated agents for TDIR; the platform normalizes data into a common information model and includes behavior analytics for humans and non-human/AI identities. <a href="https://www.exabeam.com/platform/exabeam-new-scale-fusion-security-operations-platform/">[S11]</a></td>
+<td>Behavior baselining and entity context should influence incident priority.</td>
+</tr>
+<tr>
+<td><strong>Sumo Logic Cloud SIEM</strong></td>
+<td>Cloud SIEM parsing, normalization, detection and insights.</td>
+<td>Its SOC Analyst Agent became generally available in August 2026 and performs evidence-backed investigation of SIEM insights. <a href="https://www.sumologic.com/help/release-notes-cse/">[S12]</a></td>
+<td>Agent conclusions should be tied to evidence, not just prose.</td>
+</tr>
+<tr>
+<td><strong>Panther</strong></td>
+<td>Cloud-native SIEM built around a structured security data lake and detection-as-code.</td>
+<td>Current platform materials emphasize specialized agents, open data, Python detection-as-code, MCP integrations and full audit trails. <a href="https://panther.com/overview">[S13]</a> <a href="https://docs.panther.com/">[S14]</a></td>
+<td>Open schemas, detection-as-code and version control make a student system reproducible.</td>
+</tr>
+<tr>
+<td><strong>Wazuh</strong></td>
+<td>Open-source XDR/SIEM; agent and agentless collection; server analysis; indexer and dashboard.</td>
+<td>Primarily rule/decoder driven rather than an agentic-AI-first platform. Its architecture is a useful open-source baseline for collection, analysis, indexing and visualization. <a href="https://documentation.wazuh.com/current/getting-started/architecture.html">[S15]</a></td>
+<td>Use Wazuh-like simplicity as a baseline, then add hybrid ML + multi-agent investigation.</td>
+</tr>
+</table>
+</section>
+
+<section id="gaps">
+<h2>5. Gap and opportunity analysis for your project</h2>
+<div class="callout warn"><strong>Do not define success as “faster than Splunk/CrowdStrike/Google at enterprise scale.”</strong> That would be an unrealistic project claim. Define efficiency in ways you can measure on your own system: fewer expensive model calls, lower investigation latency, better alert compression, evidence quality, compute cost per incident and reproducibility.</div>
+
+<h3>Where your project can be meaningfully differentiated</h3>
+<table>
+<tr><th>Opportunity</th><th>Proposed design</th><th>Why it matters</th></tr>
+<tr><td>LLM cost / latency</td><td>Never run an LLM on raw event firehose. Use rules + small models + correlation to create a compact evidence packet first.</td><td>Reduces tokens, latency and the prompt-injection surface.</td></tr>
+<tr><td>Explainability</td><td>Every agent claim must reference event/evidence IDs; verifier rejects unsupported claims.</td><td>Turns the AI output into an auditable investigation artifact.</td></tr>
+<tr><td>Reproducibility</td><td>Detection-as-code, versioned model registry, fixed datasets, evaluation scripts and incident fixtures.</td><td>Strong academic contribution and easier viva/demo.</td></tr>
+<tr><td>Hybrid detection</td><td>Fuse deterministic rules, supervised model, sequence anomaly model and UEBA risk rather than relying on one detector.</td><td>Balances known-threat precision and unknown-pattern sensitivity.</td></tr>
+<tr><td>Adaptive workload</td><td>Risk-gated escalation: deep model and agents only for uncertain/high-impact signals.</td><td>Compute is spent where it creates information value.</td></tr>
+<tr><td>Open architecture</td><td>OCSF-style schema + Sigma rules + ATT&amp;CK + open stores + replaceable LLM provider.</td><td>Reduces lock-in and improves portability.</td></tr>
+<tr><td>Safe automation</td><td>Separate recommendation from execution; destructive actions require approval.</td><td>Matches current agentic-security governance direction.</td></tr>
+</table>
+
+<h3>Primary thesis</h3>
+<p><strong>“Selective intelligence beats universal intelligence.”</strong> The data plane should be deterministic and highly optimized. Deep learning should evaluate sequences/windows where context is required. LLM agents should investigate incidents—not parse every log line.</p>
+</section>
+
+<section id="research">
+<h2>6. Research foundations</h2>
+
+<h3>Log parsing and representation</h3>
+<p><strong>Drain</strong> is a classic online log parser using a fixed-depth parse tree; its original evaluation emphasized streaming/timely parsing and reported faster runtime than contemporary parsers on tested datasets. <a href="https://research.cuhk.edu.hk/en/publications/drain-an-online-log-parsing-approach-with-fixed-depth-tree-2/">[S16]</a> A 2024 empirical study found that parsing choices can materially affect downstream anomaly-detection accuracy, so parsing must be treated as part of the ML system, not just preprocessing. <a href="https://link.springer.com/article/10.1007/s10664-024-10533-w">[S17]</a></p>
+
+<h3>Deep sequence anomaly detection</h3>
+<p><strong>DeepLog</strong> models log keys as a sequence using LSTM and flags deviations from learned normal patterns. <a href="https://www2.cs.utah.edu/~lifeifei/papers/deeplog.pdf">[S18]</a> <strong>LogAnomaly</strong> combines semantic template representation with sequential and quantitative anomaly detection. <a href="https://www.ijcai.org/proceedings/2019/658">[S19]</a> <strong>LogBERT</strong> applies self-supervised BERT-style learning to normal log sequences. <a href="https://arxiv.org/abs/2103.04475">[S20]</a> <strong>LogGPT</strong> uses GPT-style next-event prediction and reinforcement-learning fine-tuning for anomaly detection. <a href="https://ieeexplore.ieee.org/document/10386543/">[S21]</a></p>
+
+<div class="callout"><strong>Important evidence for model selection:</strong> a 2025 comprehensive comparison across seven log datasets reported that supervised traditional ML and deep-learning techniques can be close in accuracy/prediction time, with traditional supervised methods less sensitive to hyperparameter tuning. This supports keeping strong baselines in the project rather than assuming “deep = always better.” <a href="https://link.springer.com/article/10.1007/s10664-025-10669-3">[S22]</a></div>
+
+<h3>Multi-agent SOC research</h3>
+<p>Recent research is moving toward evidence-grounded specialist agents. The 2025 IEEE <em>Cognitive SOC</em> work used Triage, Enrichment and StoryWeaver agents and explicitly measured evidence linkage/citation coverage and hallucination. <a href="https://ieeexplore.ieee.org/document/11401968/">[S23]</a> A 2025 agentic-SOAR study proposed investigation, validation and active-monitoring stages, emphasizing validation instead of unconstrained autonomy. <a href="https://www.mdpi.com/2078-2489/16/5/365">[S24]</a></p>
+
+<h3>Standards to adopt</h3>
+<ul>
+<li><strong>OCSF:</strong> vendor-agnostic, open cybersecurity event schema suited to normalization. <a href="https://ocsf.io/">[S25]</a></li>
+<li><strong>Sigma:</strong> portable YAML detection rules for suspicious behavior in logs. <a href="https://sigmahq.io/docs/basics/rules.html">[S26]</a></li>
+<li><strong>MITRE ATT&amp;CK:</strong> common knowledge base/taxonomy for adversary tactics and techniques. <a href="https://attack.mitre.org/matrices/enterprise/">[S27]</a></li>
+<li><strong>NIST SP 800-61 Rev. 3:</strong> current incident-response recommendations aligned with CSF 2.0. <a href="https://csrc.nist.gov/pubs/sp/800/61/r3/final">[S28]</a></li>
+</ul>
+</section>
+
+<section id="architecture">
+<h2>7. Proposed system architecture</h2>
+
+<h3>7.1 End-to-end event funnel</h3>
+<div class="flow">
+  <div class="node">Log Sources</div><div class="arrow">→</div>
+  <div class="node">Collector + Buffer</div><div class="arrow">→</div>
+  <div class="node">Parse + OCSF Normalize</div><div class="arrow">→</div>
+  <div class="node">Enrich + Feature Build</div><div class="arrow">→</div>
+  <div class="node">Hybrid Detection</div><div class="arrow">→</div>
+  <div class="node">Risk Fusion + Correlation</div><div class="arrow">→</div>
+  <div class="node">Multi-Agent Investigation</div><div class="arrow">→</div>
+  <div class="node">Analyst + Approved Response</div>
+</div>
+
+<h3>7.2 Layered architecture</h3>
+<div class="arch">
+<div class="layer">
+  <div class="layer-title">Layer A — Telemetry Sources</div>
+  <div class="pills"><span class="pill">Windows Event Logs</span><span class="pill">Linux / auth.log</span><span class="pill">Syslog</span><span class="pill">Firewall</span><span class="pill">Web/App logs</span><span class="pill">Cloud audit</span><span class="pill">Identity</span><span class="pill">Dataset replay</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer B — Edge Collection & Streaming</div>
+  <div class="pills"><span class="pill">Vector / Fluent Bit</span><span class="pill">Redaction</span><span class="pill">Timestamp normalization</span><span class="pill">Redpanda/Kafka topics</span><span class="pill">Backpressure</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer C — Normalization & Enrichment</div>
+  <div class="pills"><span class="pill">JSON/Syslog parser</span><span class="pill">Drain3 templates</span><span class="pill">OCSF mapping</span><span class="pill">Geo/IP metadata</span><span class="pill">Asset criticality</span><span class="pill">Threat intel cache</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer D — Detection Plane</div>
+  <div class="pills"><span class="pill">Sigma rules</span><span class="pill">IOC matching</span><span class="pill">Frequency/statistical detector</span><span class="pill">Supervised baseline</span><span class="pill">Log Transformer / LSTM</span><span class="pill">UEBA risk</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer E — Signal Fusion & Incident Correlation</div>
+  <div class="pills"><span class="pill">Dedup</span><span class="pill">Entity join</span><span class="pill">Sliding time windows</span><span class="pill">Sequence/causal edges</span><span class="pill">Risk fusion</span><span class="pill">Case creation</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer F — Agentic Investigation</div>
+  <div class="pills"><span class="pill">Orchestrator</span><span class="pill">Evidence agent</span><span class="pill">Timeline agent</span><span class="pill">Threat-intel agent</span><span class="pill">Hypothesis agent</span><span class="pill">ATT&amp;CK mapper</span><span class="pill">Response advisor</span><span class="pill">Verifier</span><span class="pill">Report agent</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer G — Data Stores</div>
+  <div class="pills"><span class="pill">ClickHouse: events</span><span class="pill">PostgreSQL: incidents/config/users</span><span class="pill">pgvector: knowledge & case embeddings</span><span class="pill">Object storage: models/raw archives</span><span class="pill">Redis: cache/queues</span></div>
+</div>
+<div class="layer">
+  <div class="layer-title">Layer H — Analyst Experience</div>
+  <div class="pills"><span class="pill">SOC dashboard</span><span class="pill">Log search</span><span class="pill">Alert queue</span><span class="pill">Incident timeline</span><span class="pill">Attack graph</span><span class="pill">Agent evidence panel</span><span class="pill">Detection lab</span><span class="pill">Model health</span></div>
+</div>
+</div>
+
+<h3>7.3 Two-plane principle</h3>
+<table>
+<tr><th>Plane</th><th>Input volume</th><th>Technology style</th><th>Primary objective</th></tr>
+<tr><td><strong>Detection Plane</strong></td><td>All events</td><td>Streaming, deterministic logic, small/optimized models, vectorized queries</td><td>Cheaply reduce billions/millions of records into a small number of suspicious signals.</td></tr>
+<tr><td><strong>Investigation Plane</strong></td><td>Only incidents / selected alerts</td><td>Tool-using agents, retrieval, graph/timeline reasoning</td><td>Explain what happened, gather supporting evidence, map tactics, propose next steps.</td></tr>
+</table>
+</section>
+
+<section id="agents">
+<h2>8. Multi-agent design</h2>
+<p>Use <strong>LangGraph</strong> for durable, stateful orchestration with explicit control points. Its design supports deterministic and agentic steps in one graph plus human-in-the-loop interrupts, which fits security workflows. <a href="https://www.langchain.com/langgraph">[S29]</a></p>
+
+<table>
+<tr><th>Agent</th><th>Responsibility</th><th>Allowed tools</th><th>Output contract</th></tr>
+<tr><td><strong>Orchestrator</strong></td><td>Select investigation plan based on alert type/risk.</td><td>Case state, routing rules</td><td>Ordered tasks, max budget, stopping condition.</td></tr>
+<tr><td><strong>Evidence Collector</strong></td><td>Retrieve related events around users, hosts, IPs, processes and time range.</td><td>Read-only ClickHouse queries</td><td>Evidence IDs + compact facts; no conclusions.</td></tr>
+<tr><td><strong>Timeline Agent</strong></td><td>Order events and identify key transitions.</td><td>Evidence packet</td><td>Timestamped incident timeline with event IDs.</td></tr>
+<tr><td><strong>Threat Intel Agent</strong></td><td>Enrich hashes/IPs/domains/CVEs using cached or approved CTI sources.</td><td>Threat-intel adapters</td><td>IOC reputation, source, freshness, confidence.</td></tr>
+<tr><td><strong>ATT&amp;CK Mapper</strong></td><td>Map observed behavior to ATT&amp;CK techniques.</td><td>ATT&amp;CK KB + evidence</td><td>Technique IDs + supporting evidence.</td></tr>
+<tr><td><strong>Hypothesis Agent</strong></td><td>Generate ranked incident hypotheses and identify missing evidence.</td><td>Evidence + timeline + CTI</td><td>Hypotheses with confidence and evidence refs.</td></tr>
+<tr><td><strong>Verifier / Critic</strong></td><td>Reject claims without evidence and detect contradictions.</td><td>All cited evidence</td><td>Supported / unsupported list; corrected facts.</td></tr>
+<tr><td><strong>Response Advisor</strong></td><td>Suggest containment/remediation based on incident type and runbooks.</td><td>Approved runbooks only</td><td>Action proposal, impact, rollback and approval level.</td></tr>
+<tr><td><strong>Report Agent</strong></td><td>Create executive + technical incident report.</td><td>Verified incident state only</td><td>Summary, timeline, IOCs, ATT&amp;CK, scope, recommendations, citations.</td></tr>
+</table>
+
+<h3>Shared incident state</h3>
+<pre>{
+  "incident_id": "INC-2026-0042",
+  "risk_score": 87,
+  "entities": ["user:U234", "host:WS-17", "ip:10.4.8.21"],
+  "evidence_ids": ["EV-81", "EV-93", "EV-102"],
+  "timeline": [],
+  "hypotheses": [],
+  "mitre_techniques": [],
+  "open_questions": [],
+  "recommended_actions": [],
+  "approval_state": "human_required",
+  "agent_budget": {"max_steps": 18, "max_tokens": 12000}
+}</pre>
+
+<h3>Agent workflow</h3>
+<div class="flow">
+<div class="node">Incident created</div><div class="arrow">→</div>
+<div class="node">Plan</div><div class="arrow">→</div>
+<div class="node">Evidence + TI in parallel</div><div class="arrow">→</div>
+<div class="node">Timeline + ATT&amp;CK</div><div class="arrow">→</div>
+<div class="node">Hypothesis</div><div class="arrow">→</div>
+<div class="node">Verifier</div><div class="arrow">→</div>
+<div class="node">Response advice</div><div class="arrow">→</div>
+<div class="node">Human approval / report</div>
+</div>
+</section>
+
+<section id="detection">
+<h2>9. Threat detection and deep-learning design</h2>
+
+<h3>9.1 Detection ensemble</h3>
+<table>
+<tr><th>Detector</th><th>Best for</th><th>Implementation</th></tr>
+<tr><td>Rule detector</td><td>Known TTPs, policy violations, deterministic patterns</td><td>Sigma subset compiled to internal predicates / ClickHouse SQL.</td></tr>
+<tr><td>IOC detector</td><td>Known malicious IP/domain/hash</td><td>Hash tables / dictionaries with TTL and source freshness.</td></tr>
+<tr><td>Statistical detector</td><td>Rate spikes, unusual frequencies, new destinations</td><td>Z-score / EWMA / robust quantiles / rolling baselines.</td></tr>
+<tr><td>Supervised baseline</td><td>Labeled datasets such as UNSW-NB15/CICIDS</td><td>Logistic Regression / Random Forest / LightGBM for benchmark comparison.</td></tr>
+<tr><td>Deep sequence model</td><td>Abnormal event ordering and context</td><td>Small Transformer encoder or LSTM over template IDs + semantic embeddings.</td></tr>
+<tr><td>Autoencoder</td><td>Multivariate anomaly in feature windows</td><td>Denoising autoencoder, reconstruction-error threshold.</td></tr>
+<tr><td>UEBA</td><td>User/host behavior deviation</td><td>Per-entity baseline + temporal features; optional sequence model.</td></tr>
+</table>
+
+<h3>9.2 Recommended deep model for the final project</h3>
+<div class="card">
+<h3>Contextual Log Transformer</h3>
+<p><strong>Input window:</strong> last <code>N</code> normalized events for one entity/session, each represented by template ID embedding + semantic template embedding + categorical embeddings (source, event class, severity) + numeric time-gap/frequency features.</p>
+<p><strong>Architecture:</strong> embedding projection → 2–4 Transformer encoder blocks → pooled representation → heads for next-event prediction, anomaly score and optional attack-class classification.</p>
+<p><strong>Training:</strong> self-supervised on normal sequences first; optionally fine-tune with labeled anomalies. Keep DeepLog/LSTM and a traditional model as baselines.</p>
+<p><strong>Why this is suitable:</strong> it clearly satisfies the “deep learning” component, captures sequence context, remains small enough for a student deployment, and can be compared against established DeepLog/LogBERT ideas without needing a large foundation model.</p>
+</div>
+
+<h3>9.3 Risk fusion</h3>
+<p>Use a transparent score rather than letting an LLM decide severity. Example:</p>
+<pre>risk = sigmoid(
+    1.6 * rule_confidence
+  + 1.3 * deep_anomaly_score
+  + 1.1 * ueba_score
+  + 1.4 * ioc_score
+  + 0.8 * asset_criticality
+  + 0.7 * correlation_strength
+  - 0.9 * known_benign_score
+)</pre>
+<p>Weights should be calibrated on validation data. Show the contribution of each component in the UI (“why this incident is high risk”).</p>
+
+<h3>9.4 Correlation rules</h3>
+<ul>
+<li>Same user + multiple failed logins + success + privilege event within a sliding window.</li>
+<li>Suspicious process creation followed by outbound connection from same host.</li>
+<li>Rare destination domain across organization + new executable + credential event.</li>
+<li>Multiple low-severity alerts sharing user/host/IP within 10–30 minutes.</li>
+<li>Sequence matches partial ATT&amp;CK chain (e.g., initial access → execution → discovery → lateral movement).</li>
+</ul>
+</section>
+
+<section id="data">
+<h2>10. Data model, normalization and evidence design</h2>
+<p>Use OCSF concepts as the external/common schema because OCSF explicitly targets vendor-agnostic cybersecurity event normalization. <a href="https://ocsf.io/">[S25]</a> You do not need to implement the entire OCSF specification; support a focused subset relevant to your sources.</p>
+
+<h3>10.1 Canonical event fields</h3>
+<table>
+<tr><th>Group</th><th>Fields</th></tr>
+<tr><td>Identity</td><td><code>event_id</code>, <code>timestamp</code>, <code>ingested_at</code>, <code>source_type</code>, <code>vendor</code>, <code>product</code></td></tr>
+<tr><td>Classification</td><td><code>class_uid</code>, <code>category</code>, <code>activity</code>, <code>severity</code>, <code>outcome</code></td></tr>
+<tr><td>Entities</td><td><code>user</code>, <code>host</code>, <code>src_ip</code>, <code>dst_ip</code>, <code>domain</code>, <code>process</code>, <code>file_hash</code></td></tr>
+<tr><td>Parsing</td><td><code>template_id</code>, <code>template_text</code>, <code>parser_confidence</code></td></tr>
+<tr><td>Security enrichment</td><td><code>asset_criticality</code>, <code>ioc_matches</code>, <code>mitre_tags</code>, <code>geo</code></td></tr>
+<tr><td>Integrity</td><td><code>raw_hash</code>, <code>collector_id</code>, <code>raw_pointer</code></td></tr>
+</table>
+
+<h3>10.2 Core tables</h3>
+<ul>
+<li><strong>events</strong> (ClickHouse): immutable normalized telemetry.</li>
+<li><strong>signals</strong> (ClickHouse/Postgres): detector outputs with model/rule version.</li>
+<li><strong>alerts</strong> (Postgres): deduplicated analyst-facing alerts.</li>
+<li><strong>incidents</strong> (Postgres): correlated cases and state.</li>
+<li><strong>incident_entities</strong>: users/hosts/IPs/processes connected to incident.</li>
+<li><strong>evidence</strong>: evidence ID, source event IDs, provenance, confidence.</li>
+<li><strong>agent_runs</strong>: agent, prompt/template version, tools, citations, latency, token/compute cost, result status.</li>
+<li><strong>detection_rules</strong>: versioned rules, ATT&amp;CK mapping, enabled state.</li>
+<li><strong>models</strong>: MLflow model/version metadata and thresholds.</li>
+<li><strong>feedback</strong>: analyst true-positive/false-positive/correction labels.</li>
+</ul>
+
+<h3>10.3 Evidence-first rule</h3>
+<div class="callout good">Every narrative sentence that makes a factual claim about the incident should be traceable to one or more <code>evidence_id</code> values. The report agent receives verified facts, not raw free-form agent thoughts.</div>
+</section>
+
+<section id="stack">
+<h2>11. Most suitable frontend/backend/framework stack</h2>
+
+<table>
+<tr><th>Layer</th><th>Recommendation</th><th>Reason</th></tr>
+<tr><td><strong>Frontend</strong></td><td><strong>Next.js + TypeScript</strong></td><td>Strong React ecosystem, modern App Router, server/client components and straightforward production web app structure. <a href="https://nextjs.org/docs">[S30]</a></td></tr>
+<tr><td>UI styling</td><td>Tailwind CSS + shadcn/ui</td><td>Fast consistent dashboard development; accessible component primitives.</td></tr>
+<tr><td>Charts</td><td>Apache ECharts</td><td>Dense time-series/heatmap/security dashboard visualizations.</td></tr>
+<tr><td>Graph visualization</td><td>React Flow</td><td>Attack path/entity relationship graph and interactive incident flow.</td></tr>
+<tr><td><strong>Backend API</strong></td><td><strong>FastAPI</strong></td><td>Python-native, async support, type validation and automatic OpenAPI/Swagger docs—ideal because ML and agent code are already Python. <a href="https://fastapi.tiangolo.com/">[S31]</a> <a href="https://fastapi.tiangolo.com/features/">[S32]</a></td></tr>
+<tr><td>Agent orchestration</td><td>LangGraph</td><td>Stateful multi-agent workflows, deterministic + agentic nodes, persistence and human-in-the-loop. <a href="https://www.langchain.com/langgraph">[S29]</a></td></tr>
+<tr><td>ML/DL</td><td>PyTorch + scikit-learn + Hugging Face</td><td>Flexible sequence models, established experimentation ecosystem.</td></tr>
+<tr><td>MLOps</td><td>MLflow</td><td>Tracks parameters, metrics, artifacts and model versions. <a href="https://mlflow.org/docs/latest/ml/tracking">[S33]</a></td></tr>
+<tr><td>Primary event store</td><td><strong>ClickHouse</strong></td><td>Columnar real-time analytics suited to high-volume logs/security telemetry. <a href="https://clickhouse.com/industries/cybersecurity">[S34]</a></td></tr>
+<tr><td>Transactional store</td><td>PostgreSQL</td><td>Users, incidents, rules, approvals, comments, configuration and relational integrity.</td></tr>
+<tr><td>Vector retrieval</td><td>pgvector first; Qdrant optional later</td><td>Keep MVP simpler. A dedicated vector DB becomes useful only if the knowledge base grows substantially.</td></tr>
+<tr><td>Cache / job state</td><td>Redis</td><td>Short-lived cache, rate limits, worker coordination and SSE/WebSocket state.</td></tr>
+<tr><td>Stream broker</td><td><strong>Redpanda</strong> for local project; Kafka-compatible</td><td>Kafka API compatibility with simple local deployment. <a href="https://docs.redpanda.com/streaming/25.3/develop/kafka-clients/">[S35]</a></td></tr>
+<tr><td>Collector</td><td>Vector or Fluent Bit</td><td>Both are purpose-built telemetry collectors. Vector supports transforms/dedup/routing; Fluent Bit emphasizes low-resource collection. <a href="https://vector.dev/docs/introduction/">[S36]</a> <a href="https://docs.fluentbit.io/manual/about/what-is-fluent-bit">[S37]</a></td></tr>
+<tr><td>Containers</td><td>Docker Compose for MVP</td><td>One-command reproducible demo. Kubernetes only as an optional scaled deployment.</td></tr>
+<tr><td>Observability</td><td>OpenTelemetry + Prometheus/Grafana</td><td>Measure ingestion rate, detector latency, queue depth, agent latency and system resources.</td></tr>
+</table>
+
+<div class="callout"><strong>Why FastAPI instead of Node for the backend?</strong> This project is ML-heavy. Keeping APIs, feature extraction, model inference and agents in Python avoids a cross-language boundary for the most complex logic. Next.js remains a better fit for the analyst UI.</div>
+</section>
+
+<section id="frontend">
+<h2>12. Frontend system design</h2>
+<div class="grid g3">
+<div class="card"><h3>Overview Dashboard</h3><p>Events/sec, active alerts, high-risk incidents, risk distribution, ATT&amp;CK coverage, top entities, ingestion health.</p></div>
+<div class="card"><h3>Live Log Explorer</h3><p>Search/filter normalized fields; raw vs normalized event; parser template; source; time histogram.</p></div>
+<div class="card"><h3>Alert Queue</h3><p>Severity, confidence, detector contributions, affected entity, correlation count, status and assignment.</p></div>
+<div class="card"><h3>Incident Workbench</h3><p>Executive summary, evidence, timeline, entity graph, ATT&amp;CK mapping, agent findings, analyst notes and response proposal.</p></div>
+<div class="card"><h3>Threat Hunt</h3><p>Natural language → generated query preview → analyst approval → execution; saved searches and query history.</p></div>
+<div class="card"><h3>Detection Lab</h3><p>Rule editor, test fixtures, model threshold sliders, replay historical events, compare precision/recall.</p></div>
+<div class="card"><h3>Model Health</h3><p>F1/PR-AUC, anomaly-score drift, template drift, model version, inference latency and retrain status.</p></div>
+<div class="card"><h3>Agent Audit</h3><p>Which agent ran, tool calls, evidence cited, cost/tokens, latency, rejected unsupported claims and approvals.</p></div>
+<div class="card"><h3>Administration</h3><p>Sources, connectors, asset criticality, threat-intel feeds, users/RBAC, action policies and budgets.</p></div>
+</div>
+
+<h3>Incident Workbench layout</h3>
+<pre>┌──────────────────────────────────────────────────────────────────┐
+│ INC-0042  Risk 87  | Credential misuse + lateral movement        │
+├───────────────────────┬──────────────────────────────────────────┤
+│ Timeline              │ Attack / Entity Graph                    │
+│ 10:02 Failed logins   │ U234 → WS-17 → SRV-DB → external IP      │
+│ 10:04 Login success   │ ATT&CK T1110, T1078, T1021                │
+│ 10:06 Privilege use   │                                          │
+├───────────────────────┼──────────────────────────────────────────┤
+│ Evidence              │ AI Investigation                         │
+│ EV-81 event           │ Hypothesis + confidence                  │
+│ EV-93 event           │ Missing evidence                         │
+│ TI-12 intel           │ Verified findings only                   │
+├───────────────────────┴──────────────────────────────────────────┤
+│ Recommended response | impact | rollback | [Approve] [Reject]    │
+└──────────────────────────────────────────────────────────────────┘</pre>
+</section>
+
+<section id="backend">
+<h2>13. Backend services and API design</h2>
+
+<h3>13.1 Services</h3>
+<table>
+<tr><th>Service</th><th>Responsibilities</th></tr>
+<tr><td>Ingestion API</td><td>Receive test/replay events, source authentication, validation and broker publish.</td></tr>
+<tr><td>Normalizer Worker</td><td>Parse, template, OCSF mapping, PII redaction, enrichment and storage.</td></tr>
+<tr><td>Detection Worker</td><td>Rules, IOC, statistical and model inference.</td></tr>
+<tr><td>Correlation Worker</td><td>Dedup signals, sliding-window joins, risk fusion, create/update cases.</td></tr>
+<tr><td>Investigation Service</td><td>LangGraph state machine and read-only investigative tool adapters.</td></tr>
+<tr><td>Response Service</td><td>Runbook catalog, action proposal, approval policy, simulation/execution adapter.</td></tr>
+<tr><td>Model Service</td><td>Load model versions, batch inference, threshold configuration and health metadata.</td></tr>
+<tr><td>Query Service</td><td>Safe parameterized log/event/entity queries and aggregations.</td></tr>
+</table>
+
+<h3>13.2 Suggested REST endpoints</h3>
+<pre>POST   /api/v1/ingest/events
+GET    /api/v1/events
+GET    /api/v1/events/{event_id}
+GET    /api/v1/alerts
+GET    /api/v1/alerts/{alert_id}
+POST   /api/v1/alerts/{alert_id}/feedback
+GET    /api/v1/incidents
+GET    /api/v1/incidents/{incident_id}
+POST   /api/v1/incidents/{incident_id}/investigate
+GET    /api/v1/incidents/{incident_id}/timeline
+GET    /api/v1/incidents/{incident_id}/graph
+GET    /api/v1/incidents/{incident_id}/agent-runs
+POST   /api/v1/incidents/{incident_id}/response/propose
+POST   /api/v1/incidents/{incident_id}/response/approve
+POST   /api/v1/incidents/{incident_id}/response/reject
+GET    /api/v1/detections/rules
+POST   /api/v1/detections/rules/test
+GET    /api/v1/models
+GET    /api/v1/metrics/detection
+GET    /api/v1/metrics/system</pre>
+
+<h3>13.3 Streaming topics</h3>
+<pre>raw.events
+normalized.events
+signals.rules
+signals.ml
+signals.behavior
+alerts.correlated
+incidents.created
+investigations.jobs
+agent.audit
+response.approvals</pre>
+</section>
+
+<section id="security">
+<h2>14. Security, privacy and AI guardrails</h2>
+<p>Because the project gives AI agents access to security telemetry and tools, the agents themselves become part of the attack surface. OWASP's current GenAI guidance includes prompt injection, sensitive-data disclosure, excessive agency and related risks; the Agentic Top 10 also focuses specifically on autonomous systems. <a href="https://owasp.github.io/www-project-top-10-for-large-language-model-applications/">[S38]</a> <a href="https://genai.owasp.org/2025/12/09/owasp-genai-security-project-releases-top-10-risks-and-mitigations-for-agentic-ai-security/">[S39]</a></p>
+
+<table>
+<tr><th>Risk</th><th>Control</th></tr>
+<tr><td>Prompt injection inside logs</td><td>Treat log text as untrusted data; agents never follow instructions found in telemetry. Structured tools return fields/evidence, not raw instructions.</td></tr>
+<tr><td>Excessive agency</td><td>Read-only tools by default; action tools separated by policy; high-impact actions require approval.</td></tr>
+<tr><td>Sensitive log leakage</td><td>Redact secrets/tokens; field allowlists; local model option; never send raw credentials to external LLM.</td></tr>
+<tr><td>Hallucination</td><td>Evidence-citation requirement; verifier agent; “unknown” is acceptable; no uncited factual conclusions.</td></tr>
+<tr><td>Unsafe generated queries</td><td>Generate query AST/DSL, validate it, enforce row/time limits, read-only DB account.</td></tr>
+<tr><td>Data poisoning</td><td>Separate training datasets from live logs; model registry lineage; analyst-approved labels; anomaly on label distribution.</td></tr>
+<tr><td>Supply-chain risk</td><td>Pin dependencies, scan containers, SBOM, signed model artifacts/checksums.</td></tr>
+<tr><td>Audit failure</td><td>Immutable agent/tool audit records: who/what/when/input hash/output/evidence/approval.</td></tr>
+</table>
+
+<h3>RBAC roles</h3>
+<ul><li><strong>Viewer:</strong> dashboards/read-only incidents.</li><li><strong>Analyst:</strong> investigate, comment, label alerts.</li><li><strong>Responder:</strong> approve low/medium response actions.</li><li><strong>Admin:</strong> connectors, models, rules and high-impact action policy.</li></ul>
+</section>
+
+<section id="efficiency">
+<h2>15. How to make the project more efficient than a naive AI-SOC</h2>
+
+<h3>15.1 Compute funnel</h3>
+<pre>100% events
+  ↓ edge filter / dedupe / parse
+20–60% normalized events requiring full persistence or feature updates
+  ↓ rules + IOC + statistical gates
+1–10% suspicious windows
+  ↓ deep model / UEBA
+0.1–2% alerts
+  ↓ correlation
+0.01–0.5% incidents
+  ↓ multi-agent LLM investigation
+human reviews only highest-value cases</pre>
+<p class="small">The percentages are design targets to measure and tune, not assumed production facts.</p>
+
+<h3>15.2 Efficiency mechanisms</h3>
+<ul>
+<li><strong>Edge reduction:</strong> drop known noise fields, deduplicate exact repeats, normalize before central ingestion.</li>
+<li><strong>Template compression:</strong> store template IDs and extracted variables for modeling while retaining raw pointer/hash for forensics.</li>
+<li><strong>Batch inference:</strong> score sequence windows in batches, not one GPU/CPU call per event.</li>
+<li><strong>Adaptive model routing:</strong> simple model for obvious cases; advanced model only for uncertainty band.</li>
+<li><strong>Materialized views:</strong> ClickHouse aggregates for repeated dashboard/risk features.</li>
+<li><strong>Incident-level RAG:</strong> retrieve only related evidence; never send entire log corpus to the LLM.</li>
+<li><strong>Cache enrichments:</strong> IOC/GeoIP/CVE results with TTL to avoid repeated external calls.</li>
+<li><strong>Token budgets:</strong> max investigation steps/tokens/tool calls; stop when confidence/evidence threshold is met.</li>
+<li><strong>Parallel specialists:</strong> evidence and threat-intel tasks can run concurrently, but merge through one verifier.</li>
+<li><strong>Model observability:</strong> detect drift and threshold degradation before expensive retraining.</li>
+</ul>
+
+<h3>15.3 Why ClickHouse</h3>
+<p>ClickHouse explicitly targets high-volume real-time analytics, observability and cybersecurity workloads; its current cybersecurity materials emphasize continuous high-throughput ingest and concurrent analytics. <a href="https://clickhouse.com/industries/cybersecurity">[S34]</a> This is a better fit for immutable event analytics than using PostgreSQL as the only log database.</p>
+</section>
+
+<section id="evaluation">
+<h2>16. Evaluation methodology and success metrics</h2>
+<div class="callout"><strong>Your final report should compare against baselines, not just show that the UI works.</strong> That is what turns this from a dashboard project into a data-science research project.</div>
+
+<h3>16.1 Detection metrics</h3>
+<table>
+<tr><th>Metric</th><th>Why it matters</th></tr>
+<tr><td>Precision</td><td>How many generated alerts are actually malicious/anomalous.</td></tr>
+<tr><td>Recall</td><td>How many ground-truth attacks were detected.</td></tr>
+<tr><td>F1</td><td>Balance of precision and recall.</td></tr>
+<tr><td>PR-AUC</td><td>Useful for imbalanced attack datasets.</td></tr>
+<tr><td>False positives / 1,000 events</td><td>Operationally understandable alert-noise measure.</td></tr>
+<tr><td>Detection latency</td><td>Time from event ingestion to signal/alert.</td></tr>
+</table>
+
+<h3>16.2 SOC / investigation metrics</h3>
+<table>
+<tr><th>Metric</th><th>Measurement</th></tr>
+<tr><td>Alert compression ratio</td><td>raw signals ÷ analyst-facing incidents.</td></tr>
+<tr><td>Mean/median time to recommendation</td><td>incident creation → verified response recommendation.</td></tr>
+<tr><td>Evidence coverage</td><td>% factual report claims linked to evidence IDs.</td></tr>
+<tr><td>Unsupported-claim rate</td><td>claims rejected by verifier or human reviewer.</td></tr>
+<tr><td>Investigation tool calls</td><td>average read operations per incident.</td></tr>
+<tr><td>Token/compute cost per incident</td><td>LLM tokens or local model inference time.</td></tr>
+<tr><td>Analyst correction rate</td><td>% AI conclusions edited/rejected by human.</td></tr>
+</table>
+
+<h3>16.3 System metrics</h3>
+<ul>
+<li>Events per second ingested and normalized.</li>
+<li>p50/p95 event-to-alert latency.</li>
+<li>ClickHouse query p95 for common investigation queries.</li>
+<li>CPU/RAM/GPU utilization per 1,000 events.</li>
+<li>Queue lag and dropped-event count (should be zero under designed load).</li>
+<li>Agent orchestration p50/p95 duration.</li>
+</ul>
+
+<h3>16.4 Experiments to run</h3>
+<ol>
+<li><strong>Baseline ML:</strong> Random Forest/LightGBM vs LSTM/Transformer on the same labeled dataset.</li>
+<li><strong>Parser ablation:</strong> structured ground-truth fields vs Drain templates vs naive tokenization.</li>
+<li><strong>Hybrid ablation:</strong> rules only; ML only; rules + ML; rules + ML + correlation.</li>
+<li><strong>Agent ablation:</strong> single-agent RAG vs multi-agent + verifier.</li>
+<li><strong>Efficiency ablation:</strong> LLM every alert vs risk-gated LLM investigation.</li>
+<li><strong>Evidence test:</strong> percentage of claims with valid evidence references.</li>
+</ol>
+</section>
+
+<section id="datasets">
+<h2>17. Recommended datasets</h2>
+<table>
+<tr><th>Dataset</th><th>Use in project</th><th>Notes</th></tr>
+<tr>
+<td><strong>Loghub HDFS / BGL / OpenStack</strong></td>
+<td>Log parsing + sequence anomaly benchmarking.</td>
+<td>Loghub provides many real-world system log datasets; HDFS, BGL and others include labels suitable for anomaly research. <a href="https://github.com/logpai/loghub">[S40]</a></td>
+</tr>
+<tr>
+<td><strong>UNSW-NB15</strong></td>
+<td>Supervised network intrusion baseline and attack classification.</td>
+<td>About 2.54M records, nine attack categories and published train/test subsets. <a href="https://research.unsw.edu.au/projects/unsw-nb15-dataset">[S41]</a></td>
+</tr>
+<tr>
+<td><strong>CSE-CIC-IDS2018</strong></td>
+<td>Network + host/security-log scenarios, more varied intrusion classes.</td>
+<td>Includes PCAPs and Windows/Ubuntu event logs along with extracted flow features. <a href="https://www.unb.ca/cic/datasets/ids-2018.html">[S42]</a></td>
+</tr>
+<tr>
+<td><strong>LANL multi-source cyber events</strong></td>
+<td>Entity correlation, authentication behavior and red-team ground truth.</td>
+<td>58 days of de-identified auth/process/DNS/network-flow events with red-team events. <a href="https://lanl.ma.ic.ac.uk/data/cyber1/">[S43]</a></td>
+</tr>
+<tr>
+<td><strong>TON_IoT</strong></td>
+<td>Heterogeneous IoT/OS/network data; optional generalization study.</td>
+<td>Includes telemetry, Windows/Linux OS datasets and network traffic. <a href="https://research.unsw.edu.au/projects/toniot-datasets">[S44]</a></td>
+</tr>
+</table>
+
+<h3>Recommended dataset strategy</h3>
+<p>Use <strong>two datasets for the final evaluation</strong>, not five. A strong combination is <strong>Loghub HDFS/BGL</strong> for sequence anomaly detection plus <strong>LANL or CSE-CIC-IDS2018</strong> for security-centric correlation/investigation. Keep UNSW-NB15 as a simple labeled baseline if compute/time is limited.</p>
+</section>
+
+<section id="implementation">
+<h2>18. Implementation roadmap</h2>
+<div class="timeline">
+<div class="item"><b>Phase 0 — Week 1: Foundation</b><br>Finalize event schema, threat scenarios, repo, Docker Compose, source adapters and ground-truth evaluation format.</div>
+<div class="item"><b>Phase 1 — Weeks 2–3: Data pipeline</b><br>Collector/replay → stream broker → parser → OCSF mapping → ClickHouse. Build live event explorer and ingestion metrics.</div>
+<div class="item"><b>Phase 2 — Weeks 4–5: Detection baseline</b><br>Sigma subset, IOC matching, statistical detectors, supervised baseline, alert model and first dashboard.</div>
+<div class="item"><b>Phase 3 — Weeks 6–7: Deep learning</b><br>Template sequence pipeline, LSTM baseline, Transformer model, MLflow experiments, threshold calibration and model-health page.</div>
+<div class="item"><b>Phase 4 — Week 8: Correlation</b><br>Entity graph, sliding-window rules, risk fusion, incident builder and timeline.</div>
+<div class="item"><b>Phase 5 — Weeks 9–10: Multi-agent investigation</b><br>LangGraph orchestration, evidence/TI/timeline/ATT&amp;CK/hypothesis/verifier/report agents, cost controls and audit log.</div>
+<div class="item"><b>Phase 6 — Week 11: Response + safety</b><br>Runbook catalog, response proposals, human approval, simulation adapters, RBAC and AI guardrails.</div>
+<div class="item"><b>Phase 7 — Week 12: Evaluation & final demo</b><br>Run ablations, load test, create charts/tables, record demo cases, document limitations and produce final report.</div>
+</div>
+
+<h3>Definition of done by milestone</h3>
+<details><summary>M1 — Pipeline complete</summary><p>A log file or Syslog generator can stream data; normalized events are searchable in ClickHouse; dashboard shows events/sec and source health.</p></details>
+<details><summary>M2 — Detection complete</summary><p>Rules + at least one ML detector create explainable alerts with detector reason, score and source events.</p></details>
+<details><summary>M3 — Deep learning complete</summary><p>Trained model version is registered in MLflow and evaluated against at least one baseline using fixed splits.</p></details>
+<details><summary>M4 — Incident correlation complete</summary><p>Multiple related alerts merge into a single incident with entities, timeline, risk contributors and ATT&amp;CK tags.</p></details>
+<details><summary>M5 — Agentic investigation complete</summary><p>An incident triggers agents that produce a cited evidence packet, hypotheses, verifier result and final report; tool calls are audited.</p></details>
+<details><summary>M6 — Final system complete</summary><p>Frontend, APIs, evaluation notebook/scripts, Docker deployment, security controls, demo fixtures and documentation all run reproducibly.</p></details>
+</section>
+
+<section id="repo">
+<h2>19. Recommended repository structure</h2>
+<pre>ai-soc/
+├── apps/
+│   ├── web/                      # Next.js frontend
+│   └── api/                      # FastAPI gateway / REST / SSE
+├── services/
+│   ├── ingest/
+│   ├── normalizer/
+│   ├── detector/
+│   ├── correlator/
+│   ├── investigation/
+│   └── response/
+├── ml/
+│   ├── parsing/
+│   ├── features/
+│   ├── baselines/
+│   ├── log_transformer/
+│   ├── ueba/
+│   ├── training/
+│   └── evaluation/
+├── agents/
+│   ├── graph.py
+│   ├── orchestrator.py
+│   ├── evidence.py
+│   ├── timeline.py
+│   ├── threat_intel.py
+│   ├── attack_mapper.py
+│   ├── hypothesis.py
+│   ├── verifier.py
+│   ├── response_advisor.py
+│   └── report.py
+├── detections/
+│   ├── sigma/
+│   ├── correlations/
+│   └── tests/
+├── schemas/
+│   ├── ocsf_subset.json
+│   └── api/
+├── infra/
+│   ├── docker-compose.yml
+│   ├── clickhouse/
+│   ├── postgres/
+│   ├── redpanda/
+│   └── observability/
+├── datasets/
+│   ├── scripts/
+│   └── manifests/
+├── notebooks/
+│   ├── exploration/
+│   └── evaluation/
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   ├── attack_fixtures/
+│   └── agent_grounding/
+└── docs/
+    ├── architecture.md
+    ├── threat-model.md
+    ├── evaluation.md
+    └── demo.md</pre>
+</section>
+
+<section id="demo">
+<h2>20. Demo scenarios to implement</h2>
+<table>
+<tr><th>Scenario</th><th>Expected pipeline behavior</th><th>What the demo proves</th></tr>
+<tr><td>Password spray → success</td><td>Failed-login rate anomaly + rule hit → success correlation → user risk increases → incident.</td><td>Known + statistical + correlation fusion.</td></tr>
+<tr><td>Suspicious process → outbound C2-like connection</td><td>Process + network events correlate; anomaly + IOC/TI enrichment; ATT&amp;CK mapping.</td><td>Cross-source evidence and attack graph.</td></tr>
+<tr><td>Rare lateral authentication</td><td>UEBA flags first-time host relationship; sequence model increases risk; investigation retrieves prior user behavior.</td><td>Behavior modeling and deep sequence context.</td></tr>
+<tr><td>Benign burst / deployment</td><td>Many noisy events but deployment context/known pattern suppresses escalation.</td><td>False-positive reduction and context.</td></tr>
+<tr><td>Prompt injection embedded in a log line</td><td>System stores the text as untrusted telemetry; agents ignore embedded instructions.</td><td>Agent security and tool isolation.</td></tr>
+</table>
+</section>
+
+<section id="risks">
+<h2>21. Risks, limitations and how to discuss them</h2>
+<table>
+<tr><th>Risk</th><th>Mitigation / honest limitation</th></tr>
+<tr><td>Public datasets are old or synthetic</td><td>Use multiple sources and state that generalization to a live enterprise requires validation.</td></tr>
+<tr><td>Class imbalance</td><td>Use PR-AUC/F1, stratified splits and class weighting; avoid accuracy-only reporting.</td></tr>
+<tr><td>Data leakage in sequence windows</td><td>Split chronologically or by session/host where appropriate; fit scalers/templates carefully.</td></tr>
+<tr><td>Deep model may not beat simple baseline</td><td>That is a valid result; analyze where sequence context helps rather than forcing a claim.</td></tr>
+<tr><td>LLM output variability</td><td>Use structured schemas, low temperature, evidence verifier, fixed evaluation fixtures and multiple runs.</td></tr>
+<tr><td>Threat intel network dependence</td><td>Cache and ship offline fixtures for reproducible demos.</td></tr>
+<tr><td>Too many infrastructure components</td><td>Docker Compose profiles: <code>core</code>, <code>ml</code>, <code>full</code>; make Qdrant/Kubernetes optional.</td></tr>
+<tr><td>Response automation risk</td><td>Simulation by default; high-impact actions remain human-approved.</td></tr>
+</table>
+</section>
+
+<section id="deliverables">
+<h2>22. Everything that should be implemented / submitted</h2>
+<div class="grid g2">
+<div class="card">
+<h3>Software deliverables</h3>
+<ul>
+<li>Complete Next.js SOC dashboard.</li>
+<li>FastAPI backend with OpenAPI docs.</li>
+<li>Streaming ingestion and event normalization.</li>
+<li>ClickHouse + Postgres schemas.</li>
+<li>Rule, IOC, statistical and deep-learning detectors.</li>
+<li>Correlation/risk engine.</li>
+<li>LangGraph multi-agent investigation workflow.</li>
+<li>ATT&amp;CK/Sigma integration.</li>
+<li>Evidence/audit system.</li>
+<li>Response simulation + approval workflow.</li>
+<li>MLflow training/model tracking.</li>
+<li>Docker Compose deployment.</li>
+<li>Automated tests and attack fixtures.</li>
+</ul>
+</div>
+<div class="card">
+<h3>Research / academic deliverables</h3>
+<ul>
+<li>Problem statement and literature/market review.</li>
+<li>Architecture and sequence/data-flow diagrams.</li>
+<li>Dataset justification and preprocessing documentation.</li>
+<li>Model architecture and hyperparameter table.</li>
+<li>Baseline comparisons and ablation experiments.</li>
+<li>Performance/load-test results.</li>
+<li>Agent grounding/hallucination evaluation.</li>
+<li>Security threat model and guardrails.</li>
+<li>Limitations and future work.</li>
+<li>Demo script with 3–5 reproducible incidents.</li>
+</ul>
+</div>
+</div>
+
+<h3>Suggested project title refinement</h3>
+<p><strong>AI-SOC: An Evidence-Grounded Multi-Agent Deep Learning Framework for Security Log Analytics, Threat Detection and Automated Incident Investigation</strong></p>
+<p>This version emphasizes what can be experimentally demonstrated: evidence grounding, multi-agent investigation and deep-learning detection.</p>
+</section>
+
+<section id="sources">
+<h2>23. Selected research and product sources</h2>
+<p class="small">Accessed/researched 26 September 2026. Vendor feature descriptions are sourced from vendor documentation/pages and should not be read as independent comparative performance validation.</p>
+<ol class="src">
+<li>[S1] Microsoft Sentinel overview — <a href="https://learn.microsoft.com/en-us/azure/sentinel/sentinel-overview">Microsoft Learn</a></li>
+<li>[S2] Microsoft, “Reimagining the SOC for the agentic era in Microsoft Defender,” 23 Sep 2026 — <a href="https://www.microsoft.com/en-us/security/blog/2026/09/23/reimagining-the-soc-for-the-agentic-era-in-microsoft-defender/">source</a></li>
+<li>[S3] CrowdStrike Falcon Next-Gen SIEM — <a href="https://www.crowdstrike.com/en-us/platform/next-gen-siem/">source</a></li>
+<li>[S4] CrowdStrike multi-agent SOC announcement, 2 Sep 2026 — <a href="https://ir.crowdstrike.com/news-releases/news-release-details/crowdstrike-unveils-next-evolution-agentic-soc">source</a></li>
+<li>[S5] Google Security Operations — <a href="https://cloud.google.com/security/products/security-operations">source</a></li>
+<li>[S6] Google Agentic SOC — <a href="https://cloud.google.com/solutions/security/agentic-soc">source</a></li>
+<li>[S7] Splunk ES agentic AI offerings — <a href="https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.6/ai-assistant-in-security-and-agentic-capabilities/agentic-ai-offerings-in-splunk-enterprise-security">source</a></li>
+<li>[S8] Splunk triage agent — <a href="https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.5/ai-assistant-in-security-and-agentic-capabilities/setting-up-the-triage-agent">source</a></li>
+<li>[S9] Elastic Attack Discovery — <a href="https://www.elastic.co/docs/solutions/security/ai/attack-discovery">source</a></li>
+<li>[S10] Securonix Agentic AI — <a href="https://www.securonix.com/products/agentic-ai/">source</a></li>
+<li>[S11] Exabeam New-Scale Fusion — <a href="https://www.exabeam.com/platform/exabeam-new-scale-fusion-security-operations-platform/">source</a></li>
+<li>[S12] Sumo Logic Cloud SIEM 2026 release notes / SOC Analyst Agent — <a href="https://www.sumologic.com/help/release-notes-cse/">source</a></li>
+<li>[S13] Panther AI SOC platform — <a href="https://panther.com/overview">source</a></li>
+<li>[S14] Panther docs — <a href="https://docs.panther.com/">source</a></li>
+<li>[S15] Wazuh architecture — <a href="https://documentation.wazuh.com/current/getting-started/architecture.html">source</a></li>
+<li>[S16] He et al., Drain, ICWS 2017 — <a href="https://research.cuhk.edu.hk/en/publications/drain-an-online-log-parsing-approach-with-fixed-depth-tree-2/">source</a></li>
+<li>[S17] Impact of log parsing on deep-learning anomaly detection, Empirical Software Engineering, 2024 — <a href="https://link.springer.com/article/10.1007/s10664-024-10533-w">source</a></li>
+<li>[S18] Du et al., DeepLog, CCS 2017 — <a href="https://www2.cs.utah.edu/~lifeifei/papers/deeplog.pdf">source</a></li>
+<li>[S19] Meng et al., LogAnomaly, IJCAI 2019 — <a href="https://www.ijcai.org/proceedings/2019/658">source</a></li>
+<li>[S20] Guo et al., LogBERT — <a href="https://arxiv.org/abs/2103.04475">source</a></li>
+<li>[S21] Han et al., LogGPT, IEEE BigData 2023 — <a href="https://ieeexplore.ieee.org/document/10386543/">source</a></li>
+<li>[S22] Comprehensive ML study for log anomaly detection, Empirical Software Engineering, 2025 — <a href="https://link.springer.com/article/10.1007/s10664-025-10669-3">source</a></li>
+<li>[S23] Cognitive SOC, IEEE BigData 2025 — <a href="https://ieeexplore.ieee.org/document/11401968/">source</a></li>
+<li>[S24] Agentic AI hyper-automation SOAR research, Information 2025 — <a href="https://www.mdpi.com/2078-2489/16/5/365">source</a></li>
+<li>[S25] Open Cybersecurity Schema Framework — <a href="https://ocsf.io/">source</a></li>
+<li>[S26] Sigma Rules — <a href="https://sigmahq.io/docs/basics/rules.html">source</a></li>
+<li>[S27] MITRE ATT&amp;CK Enterprise Matrix — <a href="https://attack.mitre.org/matrices/enterprise/">source</a></li>
+<li>[S28] NIST SP 800-61 Rev. 3 — <a href="https://csrc.nist.gov/pubs/sp/800/61/r3/final">source</a></li>
+<li>[S29] LangGraph — <a href="https://www.langchain.com/langgraph">source</a></li>
+<li>[S30] Next.js documentation — <a href="https://nextjs.org/docs">source</a></li>
+<li>[S31] FastAPI — <a href="https://fastapi.tiangolo.com/">source</a></li>
+<li>[S32] FastAPI features / OpenAPI — <a href="https://fastapi.tiangolo.com/features/">source</a></li>
+<li>[S33] MLflow Tracking — <a href="https://mlflow.org/docs/latest/ml/tracking">source</a></li>
+<li>[S34] ClickHouse for cybersecurity — <a href="https://clickhouse.com/industries/cybersecurity">source</a></li>
+<li>[S35] Redpanda Kafka compatibility — <a href="https://docs.redpanda.com/streaming/25.3/develop/kafka-clients/">source</a></li>
+<li>[S36] Vector observability pipeline — <a href="https://vector.dev/docs/introduction/">source</a></li>
+<li>[S37] Fluent Bit — <a href="https://docs.fluentbit.io/manual/about/what-is-fluent-bit">source</a></li>
+<li>[S38] OWASP LLM Top 10 — <a href="https://owasp.github.io/www-project-top-10-for-large-language-model-applications/">source</a></li>
+<li>[S39] OWASP Agentic Applications Top 10 announcement — <a href="https://genai.owasp.org/2025/12/09/owasp-genai-security-project-releases-top-10-risks-and-mitigations-for-agentic-ai-security/">source</a></li>
+<li>[S40] Loghub — <a href="https://github.com/logpai/loghub">source</a></li>
+<li>[S41] UNSW-NB15 — <a href="https://research.unsw.edu.au/projects/unsw-nb15-dataset">source</a></li>
+<li>[S42] CSE-CIC-IDS2018 — <a href="https://www.unb.ca/cic/datasets/ids-2018.html">source</a></li>
+<li>[S43] LANL multi-source cyber-security events — <a href="https://lanl.ma.ic.ac.uk/data/cyber1/">source</a></li>
+<li>[S44] TON_IoT — <a href="https://research.unsw.edu.au/projects/toniot-datasets">source</a></li>
+</ol>
+</section>
+
+</main>
+</div>
+<div class="footer">
+  AI-SOC research blueprint · prepared for project planning and implementation · September 2026.
+</div>
+</body>
+</html>

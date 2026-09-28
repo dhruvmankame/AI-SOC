@@ -1,0 +1,25 @@
+# Offline ML / data pipeline (runtime: Python 3, stdlib only for Day 1)
+#
+# Day 1 pipeline runs with NO external deps. The packages below are for the
+# real deep-sequence model trained offline in Week 1 Day 4-5 (LSTM/Transformer),
+# and can be installed later in a venv:
+#
+#   python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
+# --- real log parsing (replaces the Drain-lite miner in pipeline.py) ---
+drain3>=0.9.11
+
+# --- classic baselines + metrics (§9.1, §16.1) ---
+scikit-learn>=1.5
+lightgbm>=4.3
+numpy>=1.26
+pandas>=2.2
+
+# --- deep sequence model (§9.2) ---
+torch>=2.3
+
+# --- experiment tracking (§11 MLflow) ---
+mlflow>=2.14
+
+# --- embeddings for ATT&CK / case RAG (pgvector) ---
+sentence-transformers>=3.0

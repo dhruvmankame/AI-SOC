@@ -1,0 +1,22 @@
+# ---- python / ml
+__pycache__/
+*.pyc
+.venv/
+mlruns/
+# ---- node / web
+node_modules/
+dist/
+.env
+.env.local
+# ---- generated data (regenerate with `python3 ml/generate_synthetic_logs.py && python3 ml/pipeline.py`)
+data/raw_events.jsonl
+data/seed.sql
+data/seed.json
+# ---- raw CICIDS2017 dataset: large public download, NOT committed.
+#      Re-download from https://www.unb.ca/cic/datasets/ids-2017.html (see README).
+#      The small demo slices under data/cicids/demo/ ARE committed.
+data/cicids/*.csv
+data/cicids/*.zip
+# ---- supabase local
+supabase/.branches/
+supabase/.temp/
