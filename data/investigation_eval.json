@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-09-29T14:16:41.554Z",
+  "source": "stored agent_runs (no new LLM calls)",
+  "aggregate": {
+    "investigations": 4,
+    "incidents": 3,
+    "evidence_facts_collected": 16,
+    "facts_dropped_by_grounding_gate": 0,
+    "total_claims": 4,
+    "grounded_claims": 4,
+    "claim_grounding_coverage_pct": 100,
+    "verifier_supported_claims": 3,
+    "verifier_rejected_claims": 1,
+    "unsupported_claim_rate_pct": 25,
+    "avg_tokens_per_investigation": 20469,
+    "avg_latency_ms_per_investigation": 42675
+  },
+  "verifier_comparison": {
+    "note": "Both arms derive from the SAME stored investigations — no second LLM pass. \"Without verifier\" ships every hypothesis (including the ones the verifier rejected); \"with verifier\" ships only verifier-supported hypotheses.",
+    "without_verifier": {
+      "claims_asserted": 4,
+      "unsupported_claims_asserted": 1,
+      "unsupported_rate_pct": 25
+    },
+    "with_verifier": {
+      "claims_asserted": 3,
+      "unsupported_claims_asserted": 0,
+      "unsupported_rate_pct": 0
+    },
+    "claims_blocked_by_verifier": 1,
+    "rejected_examples": [
+      {
+        "incident": "INC-2017-0002",
+        "statement": "Multiple hosts including 192.168.10.8 made repeated or multiple connection attempts via SSH to target 192.168.10.50 on port 22, indicating possible credential guessing behavior.",
+        "reason": "The hypothesis claims that multiple hosts including 192.168.10.8 made repeated or multiple connection attempts via SSH to target 192.168.10.50. However, the cited evidence EV-INC-2017-0002-1, EV-INC-2017-0002-2, and EV-INC-2017-0002-4 show single connection attempts from hosts 192.168.10.16, 192.168.10.17, and 192.168.10.19 respectively, rather than repeated or multiple attempts by those multiple hosts, failing to support the broad 'multiple hosts ... repeated or multiple' assertion across all cited entities."
+      }
+    ]
+  },
+  "per_investigation": [
+    {
+      "code": "INC-2017-0001",
+      "incident_id": "9e8dcd11-a725-51ac-b7fc-3aa88ec8792b",
+      "started_at": "2026-09-27T08:56:11.561Z",
+      "retrieval": "entity-fallback",
+      "evidence_facts": 6,
+      "dropped_facts": 0,
+      "hypotheses": 1,
+      "grounded_hypotheses": 1,
+      "cited_evidence": 6,
+      "supported": 1,
+      "rejected": 0,
+      "rejections": [],
+      "has_report": true,
+      "report_summary": "Multiple internal hosts were observed making repeated SSH connection attempts to destination 192.168.10.50 on port 22. This activity indicates a potential brute force attack mapped to technique T1110. The verified evidence is currently limited to these connection attempts.",
+      "tokens": 15045,
+      "latency_ms": 41868,
+      "agents_seen": [
+        "evidence-collector",
+        "hypothesis-attack",
+        "verifier",
+        "report-writer"
+      ]
+    },
+    {
+      "code": "INC-2017-0002",
+      "incident_id": "dd89374b-f4f8-534a-a645-284e36984582",
+      "started_at": "2026-09-27T08:57:04.108Z",
+      "retrieval": "entity-fallback",
+      "evidence_facts": 4,
+      "dropped_facts": 0,
+      "hypotheses": 1,
+      "grounded_hypotheses": 1,
+      "cited_evidence": 4,
+      "supported": 0,
+      "rejected": 1,
+      "rejections": [
+        {
+          "statement": "Multiple hosts including 192.168.10.8 made repeated or multiple connection attempts via SSH to target 192.168.10.50 on port 22, indicating possible credential guessing behavior.",
+          "reason": "The hypothesis claims that multiple hosts including 192.168.10.8 made repeated or multiple connection attempts via SSH to target 192.168.10.50. However, the cited evidence EV-INC-2017-0002-1, EV-INC-2017-0002-2, and EV-INC-2017-0002-4 show single connection attempts from hosts 192.168.10.16, 192.168.10.17, and 192.168.10.19 respectively, rather than repeated or multiple attempts by those multiple hosts, failing to support the broad 'multiple hosts ... repeated or multiple' assertion across all cited entities."
+        }
+      ],
+      "has_report": false,
+      "report_summary": null,
+      "tokens": 13450,
+      "latency_ms": 35044,
+      "agents_seen": [
+        "evidence-collector",
+        "hypothesis-attack",
+        "verifier"
+      ]
+    },
+    {
+      "code": "INC-2017-0002",
+      "incident_id": "dd89374b-f4f8-534a-a645-284e36984582",
+      "started_at": "2026-09-27T10:00:39.489Z",
+      "retrieval": "incident-scoped",
+      "evidence_facts": 1,
+      "dropped_facts": 0,
+      "hypotheses": 1,
+      "grounded_hypotheses": 1,
+      "cited_evidence": 1,
+      "supported": 1,
+      "rejected": 0,
+      "rejections": [],
+      "has_report": true,
+      "report_summary": "An adversary launched a volumetric flood network denial of service attack from source IP 172.16.0.1 targeting destination IP 192.168.10.50 on port 80. This activity impacted service availability and triggered high-severity detection rules. The verified evidence confirms the malicious flood pattern.",
+      "tokens": 15934,
+      "latency_ms": 42054,
+      "agents_seen": [
+        "evidence-collector",
+        "hypothesis-attack",
+        "verifier",
+        "report-writer"
+      ]
+    },
+    {
+      "code": "INC-2017-0003",
+      "incident_id": "42fb54b7-8047-58a3-8da0-295cd41f1946",
+      "started_at": "2026-09-27T08:57:42.886Z",
+      "retrieval": "entity-fallback",
+      "evidence_facts": 5,
+      "dropped_facts": 0,
+      "hypotheses": 1,
+      "grounded_hypotheses": 1,
+      "cited_evidence": 5,
+      "supported": 1,
+      "rejected": 0,
+      "rejections": [],
+      "has_report": true,
+      "report_summary": "Multiple internal hosts exhibited high severity beaconing signals communicating with the external IP address 205.174.165.73 on port 8080. This activity is indicative of command and control traffic utilizing standard application layer protocols. The verified evidence is currently limited to network connection telemetry indicating C2 beaconing behavior.",
+      "tokens": 37445,
+      "latency_ms": 51732,
+      "agents_seen": [
+        "evidence-collector",
+        "hypothesis-attack",
+        "verifier",
+        "report-writer"
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@
   "description": "Evidence-grounded multi-agent SOC investigation (LangGraph.js + Gemini).",
   "scripts": {
     "investigate": "tsx src/run.ts",
+    "eval": "tsx src/eval.ts",
     "server": "tsx src/server.ts",
     "typecheck": "tsc --noEmit"
   },

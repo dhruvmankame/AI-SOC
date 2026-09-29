@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import type { PoolClient } from 'pg';
 import { pool, q } from './db.js';
 import { investigateStreaming, type InvestigateProgress } from './graph.js';
+import { classifyLLMError } from './llm.js';
 
 // ---------------------------------------------------------------------------
 // Config (all overridable via env; defaults suit local `npm run dev` + server).
@@ -247,12 +248,16 @@ async function insertBatch(batchId: string, data: AnalyzeResult): Promise<void> 
   }
 }
 
-// A Gemini quota / rate-limit error must fail ONE incident fast, not stall the
-// whole job for minutes behind llm.ts's maxRetries. Detect it so the UI can say
-// so plainly; either way we continue to the next incident.
-function isQuotaError(err: unknown): boolean {
-  const m = String((err as Error)?.message ?? err).toLowerCase();
-  return m.includes('429') || m.includes('quota') || m.includes('rate limit') || m.includes('resource_exhausted');
+// A Gemini quota/rate-limit OR a Google-side overload (503) must fail ONE
+// incident fast, not stall the whole job for minutes. llm.ts now classifies and
+// fails fast on both; here we just turn the error into a plain UI message and
+// always continue to the next incident.
+function llmErrorMessage(err: unknown): string {
+  switch (classifyLLMError(err)) {
+    case 'overload': return 'Gemini model overloaded (503 / high demand) — retry later';
+    case 'quota':    return 'Gemini quota / rate limit reached';
+    default:         return String((err as Error)?.message ?? err).slice(0, 200);
+  }
 }
 
 // Investigate every detected incident in sequence, streaming per-node phase into
@@ -281,7 +286,7 @@ async function runInvestigations(job: Job): Promise<void> {
       });
     } catch (err) {
       ij.phase = 'error';
-      ij.error = isQuotaError(err) ? 'Gemini quota / rate limit reached' : String((err as Error)?.message ?? err).slice(0, 200);
+      ij.error = llmErrorMessage(err);
       ij.finishedAt = Date.now();
       // continue: one incident failing must not abort the batch
     }
