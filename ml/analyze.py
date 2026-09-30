@@ -42,7 +42,7 @@ from soccore import (
 csv.field_size_limit(1 << 24)
 
 SCEN = "upload"                 # single implicit scenario for one uploaded file
-REQUIRED_COLS = ("Source IP", "Destination IP", "Destination Port")
+REQUIRED_COLS = ("Source IP", "Destination IP", "Destination Port", "Timestamp")
 CAP_PER_INCIDENT = 80           # stored attack events per incident (agent reads <=60)
 ALERT_EVENT_CAP = 60            # alert.event_ids cap == getIncidentEvents default limit
 CAP_BENIGN = 300                # small benign context sample (display only; eval uses ALL flows)
@@ -191,7 +191,9 @@ def analyze(path, batch_id, label):
     missing = [c for c in REQUIRED_COLS if c not in idx]
     f.close()
     if missing:
-        fail("not a CICIDS/CICFlowMeter flow CSV; missing required columns: " + ", ".join(missing))
+        fail("unsupported flow CSV schema. Expected CICIDS/CICFlowMeter-style network-flow columns "
+             "(Source/Src IP, Destination/Dst IP, Destination/Dst Port, Timestamp). "
+             "Common header aliases are accepted. Missing canonical fields: " + ", ".join(missing))
     has_label = "Label" in idx
 
     # ---- pass 1: behavioural aggregates over ALL flows (shared with the seed)
@@ -208,9 +210,10 @@ def analyze(path, batch_id, label):
 
     f, reader, idx = open_rows(path)
     rown = 0
+    valid_ts_rows = 0
     for row in reader:
         rown += 1
-        if len(row) < 20:
+        if len(row) < 4:
             continue
         src = g(row, idx, "Source IP"); dst = g(row, idx, "Destination IP")
         if not src or not dst:
@@ -227,9 +230,9 @@ def analyze(path, batch_id, label):
 
         ts = parse_ts(g(row, idx, "Timestamp"))
         if ts is None:
-            # events.ts is NOT NULL — a flow with an unparseable timestamp cannot be
-            # stored (aggregates + the confusion matrix above already counted it).
+            # events.ts is NOT NULL — a flow with an unparseable timestamp cannot be stored.
             continue
+        valid_ts_rows += 1
 
         if not sigs:                             # benign / no-signal: strided context sample
             benign_seen += 1
@@ -260,6 +263,9 @@ def analyze(path, batch_id, label):
             acc["event_ids"].append(eid)
             stored_per_inc[owner] += 1
     f.close()
+    if valid_ts_rows == 0:
+        fail("CSV schema was recognized, but no usable timestamped flow rows were found. "
+             "Use CICIDS/CICFlowMeter-style timestamps, ISO-8601, or Unix epoch seconds/milliseconds.")
 
     return _build(inc, events, signals, batch_id, label, path, cm, has_label)
 

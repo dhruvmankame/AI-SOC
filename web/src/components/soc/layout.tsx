@@ -1,7 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, ArrowUpRight, Bell, CircleHelp, FileSearch2, LayoutDashboard, Radar, Shield, ShieldAlert, UploadCloud } from "lucide-react";
+import { Activity, ArrowUpRight, Bell, CircleHelp, DatabaseZap, LayoutDashboard, Radar, Shield, ShieldAlert, UploadCloud } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { snapshot } from "@/lib/soc-snapshot";
 import { Button } from "@/components/ui/button";
 
 const navigation = [
@@ -13,20 +12,15 @@ const navigation = [
 
 function PointerDot() {
   const dot = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const element = dot.current;
     if (!element) return;
     let positioned = false;
     const onMove = (event: PointerEvent) => {
-      if (event.pointerType !== "mouse") {
-        element.classList.remove("is-visible");
-        return;
-      }
+      if (event.pointerType !== "mouse") { element.classList.remove("is-visible"); return; }
       if (!positioned) {
         element.style.transition = "none";
         element.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%)`;
-        // Place the dot at the first pointer location without flying in from the corner.
         void element.offsetWidth;
         element.style.transition = "";
         positioned = true;
@@ -45,7 +39,6 @@ function PointerDot() {
       window.removeEventListener("blur", onLeave);
     };
   }, []);
-
   return <div ref={dot} className="soc-pointer-dot" aria-hidden="true" />;
 }
 
@@ -63,18 +56,18 @@ export function Shell({ title, description, children, action }: { title: string;
         {navigation.map(({ label, to, icon: Icon }) => {
           const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
           return <Link key={to} to={to} className={`soc-nav-link flex shrink-0 items-center gap-3 rounded-md px-3 py-2.5 text-[13px] ${active ? "border border-primary/25 bg-primary/10 font-semibold text-primary" : "border border-transparent text-muted-foreground hover:text-foreground"}`}>
-            <Icon className="size-[17px]" strokeWidth={1.8}/><span>{label}</span>{label === "Incidents" && <span className="ml-auto hidden font-mono text-[11px] text-high lg:block">{snapshot.metrics.incidents.toString().padStart(2,"0")}</span>}
+            <Icon className="size-[17px]" strokeWidth={1.8}/><span>{label}</span>
           </Link>;
         })}
       </nav>
-      <div className="mt-auto hidden px-4 pb-5 lg:block"><div className="border-t border-border pt-5"><div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-high"/> Snapshot mode</div><div className="rounded-md border border-border bg-panel2/50 p-3"><div className="flex items-center gap-2 text-xs font-medium"><FileSearch2 className="size-4 text-primary"/> CICIDS2017 seed</div><p className="mb-0 mt-2 text-[11px] leading-relaxed text-muted-foreground">Repository dataset · not live telemetry</p></div></div></div>
+      <div className="mt-auto hidden px-4 pb-5 lg:block"><div className="border-t border-border pt-5"><div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary"/> Live data mode</div><div className="rounded-md border border-border bg-panel2/50 p-3"><div className="flex items-center gap-2 text-xs font-medium"><DatabaseZap className="size-4 text-primary"/> Supabase + uploads</div><p className="mb-0 mt-2 text-[11px] leading-relaxed text-muted-foreground">Seed records and newly analyzed batches are read from the database.</p></div></div></div>
     </aside>
     <div className="min-w-0 flex-1 lg:ml-[232px]">
       <header className="relative z-10 flex min-h-[76px] flex-wrap items-center justify-between gap-3 border-b border-border bg-background/85 px-5 py-3 backdrop-blur-lg lg:px-8">
         <div><div className="flex items-center gap-2 font-mono text-[10px] uppercase text-faint"><span>AI-SOC</span><span>/</span><span className="text-primary">{title}</span></div><h1 className="mt-1 font-display text-xl font-semibold leading-tight">{title}</h1></div>
-        <div className="flex items-center gap-3">{action}<span className="hidden items-center gap-2 rounded-md border border-border bg-panel px-3 py-2 font-mono text-[10px] text-muted-foreground sm:flex"><span className="size-1.5 rounded-full bg-high"/> CICIDS2017 · SNAPSHOT</span><Link to="/analyze"><Button size="sm" className="gap-2"><UploadCloud className="size-4"/> <span className="hidden sm:inline">Analyze CSV</span><span className="sm:hidden">Analyze</span></Button></Link></div>
+        <div className="flex items-center gap-3">{action}<span className="hidden items-center gap-2 rounded-md border border-border bg-panel px-3 py-2 font-mono text-[10px] text-muted-foreground sm:flex"><span className="size-1.5 rounded-full bg-primary"/> DATABASE · LIVE</span><Link to="/analyze"><Button size="sm" className="gap-2"><UploadCloud className="size-4"/> <span className="hidden sm:inline">Analyze CSV</span><span className="sm:hidden">Analyze</span></Button></Link></div>
       </header>
-      <main className="mx-auto max-w-[1560px] px-5 pb-16 pt-7 lg:px-8"><div className="mb-7 flex flex-wrap items-end justify-between gap-2"><div><div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-medium uppercase text-primary"><Activity className="size-3"/> Detection plane <span className="text-faint">/</span> Investigation plane</div><p className="text-sm text-muted-foreground">{description}</p></div><span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase text-faint"><CircleHelp className="size-3"/> From project seed data</span></div>{children}</main>
+      <main className="mx-auto max-w-[1560px] px-5 pb-16 pt-7 lg:px-8"><div className="mb-7 flex flex-wrap items-end justify-between gap-2"><div><div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-medium uppercase text-primary"><Activity className="size-3"/> Detection plane <span className="text-faint">/</span> Investigation plane</div><p className="text-sm text-muted-foreground">{description}</p></div><span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase text-faint"><CircleHelp className="size-3"/> Seed + uploaded batches</span></div>{children}</main>
     </div>
   </div>;
 }

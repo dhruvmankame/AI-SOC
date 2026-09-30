@@ -91,13 +91,57 @@ def is_internal(ip: str) -> bool:
     return ip.startswith("192.168.") or ip.startswith("172.16.") or ip.startswith("10.")
 
 
+# Common CICFlowMeter/CICIDS column variants. The detector continues to use one
+# canonical internal schema; only the header lookup is made more tolerant.
+HEADER_ALIASES = {
+    "flow id": "Flow ID", "flowid": "Flow ID",
+    "source ip": "Source IP", "src ip": "Source IP", "srcip": "Source IP", "src addr": "Source IP",
+    "destination ip": "Destination IP", "dst ip": "Destination IP", "dstip": "Destination IP", "dest ip": "Destination IP", "dst addr": "Destination IP",
+    "source port": "Source Port", "src port": "Source Port", "sport": "Source Port",
+    "destination port": "Destination Port", "dst port": "Destination Port", "dest port": "Destination Port", "dsport": "Destination Port",
+    "timestamp": "Timestamp", "time stamp": "Timestamp", "flow start time": "Timestamp", "start time": "Timestamp", "stime": "Timestamp",
+    "protocol": "Protocol", "proto": "Protocol",
+    "flow packets/s": "Flow Packets/s", "flow pkts/s": "Flow Packets/s", "flow packets s": "Flow Packets/s",
+    "total fwd packets": "Total Fwd Packets", "tot fwd pkts": "Total Fwd Packets",
+    "total backward packets": "Total Backward Packets", "total bwd packets": "Total Backward Packets", "tot bwd pkts": "Total Backward Packets",
+    "flow duration": "Flow Duration",
+    "label": "Label",
+}
+
+
+def _header_key(s: str) -> str:
+    return " ".join(s.strip().lower().replace("_", " ").replace("-", " ").split())
+
+
 def parse_ts(s: str):
-    """CICIDS timestamps are messy (D/M/YYYY H:MM, sometimes with :SS / AM-PM).
-    Returns an ISO-8601 string, or None if unparseable (caller must skip: the
-    events.ts column is NOT NULL)."""
-    s = s.strip()
-    for fmt in ("%d/%m/%Y %I:%M:%S %p", "%d/%m/%Y %H:%M:%S",
-                "%d/%m/%Y %I:%M %p", "%d/%m/%Y %H:%M"):
+    """Parse common CICIDS/CICFlowMeter timestamps plus ISO/epoch variants."""
+    s = str(s or "").strip()
+    if not s:
+        return None
+    # Unix seconds / milliseconds (common in exported flow datasets).
+    try:
+        x = float(s)
+        if x > 1_000_000_000_000:
+            x /= 1000.0
+        if x > 100_000_000:
+            return datetime.fromtimestamp(x, tz=timezone.utc).isoformat()
+    except (ValueError, TypeError, OverflowError):
+        pass
+    # ISO-8601 first.
+    try:
+        iso = s[:-1] + "+00:00" if s.endswith("Z") else s
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+    except ValueError:
+        pass
+    # CICIDS/CICFlowMeter and common CSV exports.
+    for fmt in (
+        "%d/%m/%Y %I:%M:%S %p", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %I:%M %p", "%d/%m/%Y %H:%M",
+        "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %I:%M %p", "%m/%d/%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S",
+    ):
         try:
             return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).isoformat()
         except ValueError:
@@ -106,11 +150,16 @@ def parse_ts(s: str):
 
 
 def open_rows(path):
-    """Yield (file, reader, header_index_map) — strips CR and surrounding spaces."""
+    """Return CSV reader + an alias-aware canonical header index."""
     f = open(path, "r", encoding="latin-1", newline="")
     reader = csv.reader(f)
     header = [h.strip() for h in next(reader)]
-    idx = {name: i for i, name in enumerate(header)}
+    idx = {}
+    for i, name in enumerate(header):
+        idx.setdefault(name, i)
+        canonical = HEADER_ALIASES.get(_header_key(name))
+        if canonical:
+            idx.setdefault(canonical, i)
     return f, reader, idx
 
 
@@ -186,7 +235,7 @@ def build_aggregates(sources):
     for path, scen in sources:
         f, reader, idx = open_rows(path)
         for row in reader:
-            if len(row) < 20:
+            if len(row) < 4:
                 continue
             src = g(row, idx, "Source IP"); dst = g(row, idx, "Destination IP")
             dport = g(row, idx, "Destination Port")
