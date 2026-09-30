@@ -1,0 +1,128 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@theme inline {
+  --font-sans: "Inter", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-faint: var(--faint);
+  --color-crit: var(--crit);
+  --color-high: var(--high);
+  --color-med: var(--med);
+  --color-low: var(--low);
+  --color-info: var(--info);
+  --color-violet: var(--violet);
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+}
+:root {
+  color-scheme: dark;
+  --background: oklch(0.15 0.018 257); /* #080c12 */
+  --foreground: oklch(0.966 0.009 247); /* #f0f4f8 */
+  --card: oklch(0.214 0.026 258);
+  --panel: oklch(0.214 0.026 258); /* #111a27 */
+  --panel2: oklch(0.273 0.035 258); /* #1a2636 */
+  --primary: oklch(0.826 0.139 180); /* #3de8d5 */
+  --primary-foreground: oklch(0.245 0.056 180);
+  --secondary: oklch(0.273 0.035 258);
+  --muted: oklch(0.273 0.035 258);
+  --muted-foreground: oklch(0.71 0.031 255); /* #94a3b8 */
+  --faint: oklch(0.57 0.031 255);
+  --accent: oklch(0.28 0.049 185);
+  --destructive: oklch(0.65 0.218 25);
+  --border: oklch(0.34 0.041 255); /* #243347 */
+  --crit: oklch(0.65 0.218 25); /* #ff4d4d */
+  --high: oklch(0.76 0.157 54); /* #fb923c */
+  --med: oklch(0.86 0.166 96); /* #facc15 */
+  --low: oklch(0.75 0.127 222); /* #38bdf8 */
+  --info: oklch(0.68 0.176 276); /* #818cf8 */
+  --violet: oklch(0.64 0.244 307); /* #a855f7 */
+}
+@layer base {
+  * { border-color: var(--border); }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+  button, input, select { font: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+  ::selection { background: var(--accent); color: var(--foreground); }
+}
+@keyframes enter { from {opacity:0;transform:translateY(8px)} to {opacity:1;transform:translateY(0)} }
+@utility panel-surface { background-color: color-mix(in oklab, var(--panel) 80%, transparent); border: 1px solid color-mix(in oklab, var(--border) 85%, transparent); backdrop-filter: blur(18px); border-radius: 8px; }
+@utility mono-number { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+@utility entrance { animation: enter .45s ease-out both; }
+.soc-pointer-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--low);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--low) 65%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform 1.2s cubic-bezier(.18,.65,.24,1);
+  will-change: transform;
+}
+.soc-pointer-dot.is-visible { opacity: 1; }
+@media (hover: none) { .soc-pointer-dot { display: none; } }
+/* A shared, restrained highlight travels across surfaces rather than flashing on each item. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .panel-surface {
+    background-image: linear-gradient(110deg, transparent 20%, color-mix(in oklab, var(--primary) 5%, transparent) 50%, transparent 80%);
+    background-size: 240% 100%;
+    background-position: 100% 0;
+    transition: background-position .65s ease, border-color .4s ease, box-shadow .4s ease, transform .4s cubic-bezier(.2,.8,.2,1);
+  }
+  .panel-surface:hover {
+    background-position: 0 0;
+    border-color: color-mix(in oklab, var(--primary) 36%, var(--border));
+    box-shadow: 0 10px 30px -22px color-mix(in oklab, var(--primary) 40%, transparent), inset 0 1px 0 color-mix(in oklab, var(--primary) 12%, transparent);
+    transform: translateY(-2px);
+  }
+  .soc-nav-link { position: relative; isolation: isolate; transition: color .28s ease, border-color .28s ease; }
+  .soc-nav-link::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    background: color-mix(in oklab, var(--primary) 10%, transparent);
+    opacity: 0; transform: scaleX(.88); transform-origin: left center;
+    transition: opacity .32s ease, transform .36s cubic-bezier(.2,.8,.2,1);
+  }
+  .soc-nav-link:hover::before, .soc-nav-link:focus-visible::before { opacity: 1; transform: scaleX(1); }
+  .soc-nav-link:hover { border-color: color-mix(in oklab, var(--primary) 32%, transparent); }
+  .soc-nav-link svg { transition: transform .32s cubic-bezier(.2,.8,.2,1), color .32s ease; }
+  .soc-nav-link:hover svg { transform: translateX(3px); color: var(--primary); }
+  .soc-row { transition: background-color .3s ease, box-shadow .3s ease; }
+  .soc-row:hover { background-color: color-mix(in oklab, var(--primary) 7%, var(--panel)); box-shadow: inset 3px 0 0 color-mix(in oklab, var(--primary) 70%, transparent); }
+  .soc-row:hover > svg:last-child, .soc-row:hover a[aria-label] svg { transform: translateX(3px); }
+  .soc-row a[aria-label] svg { transition: transform .3s ease; }
+  .soc-chart-bar { transition: background-color .28s ease, filter .28s ease; }
+  .group:hover > .soc-chart-bar { background-color: var(--primary); filter: drop-shadow(0 0 5px color-mix(in oklab, var(--primary) 35%, transparent)); }
+  .soc-text-link svg { transition: transform .3s ease; }
+  .soc-text-link:hover svg { transform: translate(2px, -2px); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } .panel-surface:hover { transform: none; } }

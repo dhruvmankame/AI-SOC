@@ -1,56 +1,20 @@
-# AI-SOC — Evidence-Grounded Multi-Agent SOC (1-week build)
+# AI-SOC frontend handoff
 
-A buildable slice of the *AI-SOC* blueprint: a two-plane security-operations system
-where a cheap **detection plane** compresses raw logs into a few correlated incidents,
-and an **agentic investigation plane** produces **evidence-cited** incident narratives
-with a verifier that rejects any unsupported claim.
+This is the standalone Lovable frontend developed for the AI-SOC repository. It is not an automatic modification of your local clone or a drop-in replacement for the original `web/` app: this frontend uses TanStack Start, while the original frontend has its own setup. Keep the existing backend, data, and original files intact.
 
-Priority for this build: **multi-agent investigation** (the graded contribution).
+## Add it to your existing AI-SOC clone
 
-## Stack (built without Lovable)
+1. Extract this ZIP. Copy the enclosed `ai-soc-frontend` folder into the root of your local AI-SOC clone, alongside `web/` (do not overwrite `web/`).
+2. From that folder, install dependencies and start the frontend:
 
-- **Frontend:** React + Vite + TypeScript + Tailwind + shadcn/ui (`web/`)
-- **Backend / data:** Supabase — Postgres + pgvector + Edge Functions + Realtime + Auth
-- **Agents:** LangGraph.js (TypeScript) in a Supabase Edge Function, LLM via a free provider
-- **Offline ML:** Python notebooks/scripts (`ml/`) — parsing, detection, sequence model — results loaded into Supabase
+   ```sh
+   cd ai-soc-frontend
+   bun install
+   bun run dev
+   ```
 
-> The heavy blueprint components (ClickHouse, Kafka, FastAPI microservices, MLflow infra)
-> are intentionally replaced by Postgres + a replay script + offline training to fit one week.
-> See `docs/implementation-plan.md` for the mapping and honest trade-offs.
+   Alternatively, `npm install` and `npm run dev` work with Node.js.
+3. The Overview, Incidents, Alert Queue, and Incident Record screens show a **static CICIDS2017 seed snapshot**, not live telemetry. CSV analysis calls the original project's local-only agents service at `http://localhost:8787` by default; set `VITE_ANALYZE_API` to your local service URL if different. The service must be started separately using the original repository's instructions. Do not expose its unauthenticated endpoint publicly.
+4. Review locally, then commit and push the new folder from your AI-SOC repository as you normally do. This does not change the existing `web/` app or make the new frontend the default launch target automatically.
 
-## Repo layout
-
-```
-dsl/
-├── web/                     # React/Vite frontend (Day 2+)
-├── supabase/migrations/     # 0001_init.sql — OCSF-subset schema + agent tables
-├── ml/                      # offline data + detection pipeline (Day 1, stdlib-only)
-│   ├── generate_synthetic_logs.py
-│   ├── pipeline.py          # parse -> normalize -> detect -> seed export
-│   └── requirements.txt     # real model deps (Day 4-5)
-├── data/                    # generated seed (gitignored)
-└── docs/
-    ├── implementation-plan.md
-    └── demo-scenarios.md
-```
-
-## Quick start (Day 1 — data foundation)
-
-```bash
-# 1. generate labelled logs + run the detection pipeline (no deps needed)
-python3 ml/generate_synthetic_logs.py
-python3 ml/pipeline.py           # -> data/seed.sql, data/seed.json
-
-# 2. create the schema + load seed (once you have a Supabase project or `supabase start`)
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql
-psql "$SUPABASE_DB_URL" -f data/seed.sql
-```
-
-## Status
-
-- [x] **Day 1** — schema, labelled data generator, detection pipeline, 3 demo scenarios, seed export
-- [ ] Day 2 — detection API + Overview dashboard + Alert Queue
-- [ ] Day 3 — correlation → incidents + risk fusion
-- [ ] Days 4–5 — **multi-agent investigation (LangGraph.js) + verifier**
-- [ ] Day 6 — Incident Workbench + Agent Audit UI
-- [ ] Day 7 — evaluation (evidence coverage, unsupported-claim rate) + demo
+The blue pointer dot trails mouse movement for 1.2 seconds. Touch pointers do not show the dot, and reduced-motion settings disable the movement animation.

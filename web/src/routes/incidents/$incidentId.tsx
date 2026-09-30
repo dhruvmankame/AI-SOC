@@ -1,0 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { Shell } from "@/components/soc/layout";
+import { Record } from "@/components/soc/record";
+export const Route = createFileRoute("/incidents/$incidentId")({ head:()=>({meta:[{title:"Incident Record | AI-SOC"},{name:"description",content:"Review incident risk, detector evidence, entities, and verifier status in AI-SOC."},{property:"og:title",content:"Incident Record | AI-SOC"},{property:"og:description",content:"Review incident risk, detector evidence, entities, and verifier status."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary_large_image"}]}),component:()=> { const { incidentId }=Route.useParams(); return <Shell title="Incident Record" description="Trace detection signals back to their source and verification status."><Record incidentId={incidentId}/></Shell>; } });

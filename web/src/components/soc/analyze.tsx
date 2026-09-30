@@ -1,0 +1,31 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { ArrowRight, FileSpreadsheet, Info, ScanSearch, UploadCloud } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { analyzeFile, fetchJob, isTerminal, phaseLabels, phaseProgress, type AnalyzeResponse, type Job } from "@/lib/analyze-client";
+import { SectionTitle } from "./layout";
+
+export function Analyze() {
+  const [file,setFile]=useState<File|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  const [response,setResponse]=useState<AnalyzeResponse|null>(null);
+  const [job,setJob]=useState<Job|null>(null);
+  const inputRef=useRef<HTMLInputElement>(null);
+  useEffect(()=>{
+    if (!response) return;
+    let live=true;
+    let timer:ReturnType<typeof setTimeout>;
+    async function tick(){
+      if (!response) return;
+      try { const next=await fetchJob(response.jobId); if (!live) return; setJob(next); if (next.status!=="complete" || next.incidents.some((i)=>!isTerminal(i.phase))) timer=setTimeout(tick,2500); }
+      catch(e){ if(live) setError(e instanceof Error?e.message:String(e)); }
+    }
+    void tick();
+    return ()=>{live=false;clearTimeout(timer)};
+  },[response]);
+  async function submit(){ if (!file || busy) return; setBusy(true);setError(null);setResponse(null);setJob(null);try {setResponse(await analyzeFile(file));} catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);} }
+  return <div className="space-y-5 entrance"><div className="grid gap-5 xl:grid-cols-12"><section className="panel-surface overflow-hidden xl:col-span-8"><SectionTitle label="Analyze network flows" aside="Upload a CICIDS / CICFlowMeter CSV for local detection and investigation"/><div className="p-5"><div className="flex min-h-[260px] flex-col items-center justify-center rounded-md border border-dashed border-primary/30 bg-primary/[.025] px-5 py-8 text-center"><div className="mb-4 flex size-14 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary"><UploadCloud className="size-6" strokeWidth={1.6}/></div><h3 className="font-display text-lg font-medium">Flow log ready for inspection</h3><p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">Choose a .csv export to run detection, correlation, and evidence-grounded agent investigation on your local AI-SOC service.</p><input ref={inputRef} type="file" accept=".csv,text/csv" className="sr-only" aria-label="Choose CSV flow log" onChange={(e)=>{setFile(e.target.files?.[0]??null);setError(null)}}/><div className="mt-5 flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={()=>inputRef.current?.click()} disabled={busy}><FileSpreadsheet className="size-4"/> Choose CSV</Button><Button onClick={submit} disabled={!file||busy}><ScanSearch className="size-4"/>{busy?"Uploading…":"Run analysis"}</Button></div>{file && <div className="mt-4 max-w-full truncate rounded border border-border bg-panel px-3 py-1.5 font-mono text-[11px] text-muted-foreground">{file.name} · {(file.size/1024).toFixed(1)} KB</div>}</div>{error && <div role="alert" className="mt-4 rounded border border-crit/30 bg-crit/10 p-3 text-xs text-crit">{error}</div>}</div></section><section className="panel-surface overflow-hidden xl:col-span-4"><SectionTitle label="Investigation sequence" aside="From raw flows to verified reporting"/><div className="p-5">{[{n:"01",label:"Ingest",text:"Parse and normalize flow records"},{n:"02",label:"Detect",text:"Apply rules and correlate signals"},{n:"03",label:"Investigate",text:"Collect evidence and form hypotheses"},{n:"04",label:"Verify",text:"Reject claims without supporting evidence"},{n:"05",label:"Report",text:"Record findings and agent audit"}].map((s,i)=><div key={s.n} className="relative flex gap-3 pb-5 last:pb-0"><div className="relative flex flex-col items-center"><span className="flex size-7 shrink-0 items-center justify-center rounded border border-primary/25 bg-primary/10 font-mono text-[10px] text-primary">{s.n}</span>{i<4&&<span className="mt-1 h-full w-px bg-border"/>}</div><div className="pt-1"><div className="text-xs font-medium">{s.label}</div><div className="mt-1 text-[11px] text-muted-foreground">{s.text}</div></div></div>)}</div></section></div>
+  {response && <section className="panel-surface overflow-hidden"><SectionTitle label="Analysis results" aside={`${response.incidents.length} incident${response.incidents.length===1?"":"s"} detected · ${job?.status??"starting"}`}/>{response.incidents.length===0?<p className="p-5 text-xs text-muted-foreground">No attacks detected in this file. The batch was still recorded.</p>:<div className="divide-y divide-border/70">{response.incidents.map((inc)=>{const current=job?.incidents.find((item)=>item.incidentId===inc.incidentId);const phase=current?.phase??"queued";return <div key={inc.incidentId} className="p-5"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-medium">{inc.attackType}</div><div className="mt-1 font-mono text-[10px] text-faint">{inc.code} · RISK {Math.round(inc.risk)}</div></div><span className="font-mono text-[11px] text-primary">{phaseLabels[phase]}</span></div><div className="mt-4 h-1 bg-panel2"><div className={`h-full transition-all ${phase==="error"?"bg-crit":phase==="done_no_report"?"bg-high":"bg-primary"}`} style={{width:`${phaseProgress[phase]}%`}}/></div>{current?.error && <p className="mt-2 text-xs text-crit">{current.error}</p>}{isTerminal(phase) && <Link className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline" to="/incidents/$incidentId" params={{incidentId:inc.incidentId}}>Open incident record <ArrowRight className="size-3"/></Link>}</div>})}</div>}</section>}
+  <div className="flex items-start gap-3 rounded-md border border-border bg-panel/45 p-4 text-xs leading-relaxed text-muted-foreground"><Info className="mt-0.5 size-4 shrink-0 text-low"/><p>The analysis service in the linked repository runs locally and is not available in this hosted preview. Keep it on your machine; its unauthenticated upload endpoint must not be exposed publicly.</p></div></div>;
+}
