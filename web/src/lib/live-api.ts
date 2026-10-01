@@ -1,4 +1,16 @@
+import { getActiveBatchId, type ActiveBatchId } from "@/lib/active-batch";
+
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
+
+export interface BatchRow {
+  batch_id: string;
+  label: string | null;
+  source_filename: string | null;
+  created_at: string;
+  event_count: number | null;
+  incident_count: number | null;
+  status: string | null;
+}
 
 export interface AlertRow {
   alert_id: string;
@@ -133,6 +145,10 @@ function makeUrl(table: string, params: URLSearchParams): string {
   return `${BASE}/rest/v1/${table}?${params.toString()}`;
 }
 
+function datasetFilter(batchId: ActiveBatchId = getActiveBatchId()): Record<string, string> {
+  return batchId === "seed" ? { batch_id: "is.null" } : { batch_id: `eq.${batchId}` };
+}
+
 async function rows<T>(
   table: string,
   select: string,
@@ -146,27 +162,33 @@ async function rows<T>(
   return (await response.json()) as T[];
 }
 
-async function allRows<T>(table: string, select: string): Promise<T[]> {
+async function allRows<T>(
+  table: string,
+  select: string,
+  filters: Record<string, string> = {},
+): Promise<T[]> {
   const out: T[] = [];
   const pageSize = 1000;
   for (let start = 0; ; start += pageSize) {
     const params = new URLSearchParams({ select });
+    for (const [key, value] of Object.entries(filters)) params.set(key, value);
     const response = await checked(
       await fetch(makeUrl(table, params), {
         headers: headers({ Range: `${start}-${start + pageSize - 1}` }),
         cache: "no-store",
       }),
     );
-    const batch = (await response.json()) as T[];
-    out.push(...batch);
-    if (batch.length < pageSize) break;
-    if (start > 50000) break; // safety guard for a student/demo deployment
+    const page = (await response.json()) as T[];
+    out.push(...page);
+    if (page.length < pageSize) break;
+    if (start > 50000) break;
   }
   return out;
 }
 
-async function count(table: string): Promise<number> {
+async function count(table: string, filters: Record<string, string> = {}): Promise<number> {
   const params = new URLSearchParams({ select: "*" });
+  for (const [key, value] of Object.entries(filters)) params.set(key, value);
   const response = await checked(
     await fetch(makeUrl(table, params), {
       headers: headers({ Prefer: "count=exact", Range: "0-0" }),
@@ -180,20 +202,29 @@ async function count(table: string): Promise<number> {
   return body.length;
 }
 
-export async function fetchAlerts(): Promise<AlertRow[]> {
-  return rows<AlertRow>(
-    "alerts",
-    "alert_id,title,severity,confidence,detector,contributions,entity,event_ids,correlation_count,status,incident_id,batch_id,created_at",
+export async function fetchBatches(): Promise<BatchRow[]> {
+  return rows<BatchRow>(
+    "ingest_batches",
+    "batch_id,label,source_filename,created_at,event_count,incident_count,status",
     {},
     "created_at.desc",
   );
 }
 
-export async function fetchIncidents(): Promise<IncidentRow[]> {
+export async function fetchAlerts(batchId: ActiveBatchId = getActiveBatchId()): Promise<AlertRow[]> {
+  return rows<AlertRow>(
+    "alerts",
+    "alert_id,title,severity,confidence,detector,contributions,entity,event_ids,correlation_count,status,incident_id,batch_id,created_at",
+    datasetFilter(batchId),
+    "created_at.desc",
+  );
+}
+
+export async function fetchIncidents(batchId: ActiveBatchId = getActiveBatchId()): Promise<IncidentRow[]> {
   return rows<IncidentRow>(
     "incidents",
     "incident_id,code,title,risk_score,status,approval_state,mitre_techniques,summary,batch_id,created_at,updated_at",
-    {},
+    datasetFilter(batchId),
     "created_at.desc",
   );
 }
@@ -259,6 +290,7 @@ export async function fetchAttackKb(): Promise<Map<string, AttackKbRow>> {
 export async function fetchVerifierCounts(
   incidentIds: string[],
 ): Promise<Map<string, { supported: number; rejected: number }>> {
+  if (incidentIds.length === 0) return new Map();
   const wanted = new Set(incidentIds);
   const runs = await rows<{
     incident_id: string;
@@ -283,11 +315,16 @@ export async function fetchVerifierCounts(
   return out;
 }
 
-export async function fetchOverview(): Promise<OverviewData> {
+export async function fetchOverview(batchId: ActiveBatchId = getActiveBatchId()): Promise<OverviewData> {
+  const filter = datasetFilter(batchId);
   const [events, signals, alerts, incidents, rules, eventRows, incidentRows] = await Promise.all([
-    count("events"), count("signals"), count("alerts"), count("incidents"), count("detection_rules"),
-    allRows<{ ts: string; source_type: string; severity: string }>("events", "ts,source_type,severity"),
-    fetchIncidents(),
+    count("events", filter),
+    count("signals", filter),
+    count("alerts", filter),
+    count("incidents", filter),
+    count("detection_rules"),
+    allRows<{ ts: string; source_type: string; severity: string }>("events", "ts,source_type,severity", filter),
+    fetchIncidents(batchId),
   ]);
 
   const sev = new Map<string, number>();
@@ -299,13 +336,18 @@ export async function fetchOverview(): Promise<OverviewData> {
     const key = String(event.ts).replace("T", " ").slice(0, 13) + ":00";
     hour.set(key, (hour.get(key) ?? 0) + 1);
   }
+
   const volume = [...hour.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-24)
     .map(([h, c]) => ({ hour: h, count: c }));
 
   return {
-    events, signals, alerts, incidents, rules,
+    events,
+    signals,
+    alerts,
+    incidents,
+    rules,
     severity: [...sev.entries()].map(([name, c]) => ({ name, count: c })),
     sources: [...src.entries()].map(([name, c]) => ({ name, count: c })).sort((a, b) => b.count - a.count),
     volume,

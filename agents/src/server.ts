@@ -85,10 +85,6 @@ interface Job {
   incidents: IncidentJob[];
 }
 const jobs = new Map<string, Job>();
-// Single-flight: the Gemini throttle in llm.ts is process-global, so a 2nd
-// upload's LLM calls would only interleave behind the 1st's. Reject concurrent
-// analyses until the active job's investigation finishes.
-let activeJobId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Shape emitted by ml/analyze.py (JSON on stdout). Loose: only the fields we
@@ -265,6 +261,9 @@ function llmErrorMessage(err: unknown): string {
 // rejection here would crash the process.
 async function runInvestigations(job: Job): Promise<void> {
   job.status = 'investigating';
+  try {
+    await q('update ingest_batches set status = $1 where batch_id = $2', ['investigating', job.batchId]);
+  } catch { /* best-effort */ }
   for (const ij of job.incidents) {
     // Skip anything that already carries a report (re-run safety; a fresh
     // upload has none). A written report sets incidents.summary.
@@ -305,56 +304,104 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // The heavy lifting for POST /api/analyze, after multer has stored the file.
 async function handleAnalyze(req: express.Request, res: express.Response): Promise<void> {
-  // Single-flight: reject a new analysis while one is still investigating.
-  if (activeJobId && jobs.get(activeJobId)?.status !== 'complete') {
-    if (req.file?.path) await fsp.unlink(req.file.path).catch(() => {});
-    res.status(409).json({ error: 'an analysis is already running; wait for it to finish', activeJobId });
-    return;
-  }
   if (!req.file) {
     res.status(400).json({ error: 'no file uploaded (multipart field "file")' });
     return;
   }
 
+  const requestStarted = Date.now();
   const batchId = randomUUID();
   const jobId = randomUUID();
-  activeJobId = jobId;                          // claim the slot before any await
   const filePath = req.file.path;
   const label = req.file.originalname || 'upload.csv';
 
   try {
     const data = await runAnalyze(filePath, batchId, label);
     if (data.error) {
-      activeJobId = null;
       res.status(400).json({ error: data.error });
       return;
     }
-    await insertBatch(batchId, data);
 
     const kbName = new Map(data.attack_kb.map((k) => [k.technique_id, k.name]));
     const job: Job = {
-      jobId, batchId, createdAt: Date.now(), status: 'investigating',
+      jobId,
+      batchId,
+      createdAt: Date.now(),
+      status: 'inserting',
       incidents: data.incidents.map((i) => ({
-        incidentId: i.incident_id, code: i.code, title: i.title, risk: i.risk_score,
-        attackType: kbName.get(i.mitre_techniques?.[0]) ?? i.title, phase: 'queued' as IncidentPhase,
+        incidentId: i.incident_id,
+        code: i.code,
+        title: i.title,
+        risk: i.risk_score,
+        attackType: kbName.get(i.mitre_techniques?.[0]) ?? i.title,
+        phase: 'queued' as IncidentPhase,
       })),
     };
     jobs.set(jobId, job);
+
     res.json({
-      batchId, jobId,
-      incidents: job.incidents.map((i) => ({ incidentId: i.incidentId, code: i.code, title: i.title, attackType: i.attackType, risk: i.risk })),
+      batchId,
+      jobId,
+      stats: {
+        storedEvents: data.batch.event_count,
+        signals: data.signals.length,
+        alerts: data.alerts.length,
+        incidents: data.incidents.length,
+        processingMs: Date.now() - requestStarted,
+        sourceFilename: data.batch.source_filename,
+      },
+      incidents: job.incidents.map((i) => ({
+        incidentId: i.incidentId,
+        code: i.code,
+        title: i.title,
+        attackType: i.attackType,
+        risk: i.risk,
+      })),
+      alerts: data.alerts.map((a) => ({
+        title: a.title,
+        severity: a.severity,
+        confidence: a.confidence,
+        detector: a.detector,
+        entity: a.entity,
+        correlationCount: a.correlation_count,
+        contributions: a.contributions ?? {},
+      })),
+      eval: data.eval ?? null,
     });
 
-    // Fire-and-forget: investigate all incidents; release the slot when done.
-    void runInvestigations(job)
-      .catch((e) => console.error('[investigate] fatal', e))
-      .finally(() => { if (activeJobId === jobId) activeJobId = null; });
+    void (async () => {
+      try {
+        await insertBatch(batchId, data);
+
+        if (job.incidents.length === 0) {
+          job.status = 'complete';
+          try {
+            await q('update ingest_batches set status = $1 where batch_id = $2', ['complete', batchId]);
+          } catch { /* best-effort */ }
+          return;
+        }
+
+        await runInvestigations(job);
+      } catch (err) {
+        const message = String((err as Error)?.message ?? err).slice(0, 200);
+        console.error('[background-analysis] error', err);
+        for (const incident of job.incidents) {
+          if (incident.phase === 'queued') {
+            incident.phase = 'error';
+            incident.error = message;
+            incident.finishedAt = Date.now();
+          }
+        }
+        job.status = 'complete';
+      }
+    })();
   } catch (err) {
-    activeJobId = null;
     console.error('[analyze] error', err);
-    if (!res.headersSent) res.status(500).json({ error: String((err as Error)?.message ?? 'analyze failed') });
+    if (!res.headersSent) {
+      res.status(500).json({ error: String((err as Error)?.message ?? 'analyze failed') });
+    }
   } finally {
-    await fsp.unlink(filePath).catch(() => {});   // temp CSV no longer needed
+    await fsp.unlink(filePath).catch(() => {});
   }
 }
 
