@@ -1,0 +1,1302 @@
+<!doctype html>
+<title>AI-SOC Team Handbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* ===========================================================================
+   AI-SOC Team Handbook — design tokens
+   Layout: analyst dossier. A sticky index rail beside a document column; wide
+   artifacts (pipeline, tables, schema, code) break out of the reading measure.
+   Palette and type are the product's own, taken from web/src/styles.css, so the
+   handbook reads as part of AI-SOC rather than a document about it.
+   ======================================================================== */
+:root {
+  color-scheme: dark;
+  --bg:#080c12;
+  --surface:#111a27;
+  --surface-2:#1a2636;
+  --line:#243347;
+  --text:#f0f4f8;
+  --muted:#94a3b8;
+  --faint:#6b7c92;
+  --accent:#3de8d5;
+  --accent-ink:#04211e;
+  --accent-soft:rgba(61,232,213,.13);
+  --crit:#ff6b6b;
+  --high:#fb923c;
+  --med:#facc15;
+  --low:#38bdf8;
+  --info:#818cf8;
+  --ok:#34d399;
+  --radius:8px;
+  --font-display:"Space Grotesk",system-ui,sans-serif;
+  --font-sans:"Inter",system-ui,-apple-system,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg:#f4f7f8;
+    --surface:#ffffff;
+    --surface-2:#eaeff3;
+    --line:#d5dee5;
+    --text:#0b1220;
+    --muted:#516074;
+    --faint:#78889a;
+    --accent:#0c7268;
+    --accent-ink:#ffffff;
+    --accent-soft:rgba(12,114,104,.10);
+    --crit:#c02b2b;
+    --high:#a8520a;
+    --med:#7d6100;
+    --low:#0369a1;
+    --info:#4f46e5;
+    --ok:#0f7a4d;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:#f4f7f8;
+  --surface:#ffffff;
+  --surface-2:#eaeff3;
+  --line:#d5dee5;
+  --text:#0b1220;
+  --muted:#516074;
+  --faint:#78889a;
+  --accent:#0c7268;
+  --accent-ink:#ffffff;
+  --accent-soft:rgba(12,114,104,.10);
+  --crit:#c02b2b;
+  --high:#a8520a;
+  --med:#7d6100;
+  --low:#0369a1;
+  --info:#4f46e5;
+  --ok:#0f7a4d;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+::selection { background: var(--accent-soft); }
+
+h1, h2, h3, h4 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.2; letter-spacing: -.015em; }
+p { margin: 0; }
+a { color: var(--accent); }
+
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 20px; }
+
+/* ---- masthead ---------------------------------------------------------- */
+.masthead {
+  padding-block: 56px 40px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.brandline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mark {
+  width: 34px; height: 34px; flex: none;
+  border: 1.5px solid var(--accent);
+  border-radius: 7px;
+  display: grid; place-items: center;
+  background: var(--accent-soft);
+}
+.mark svg { display: block; }
+.brandline .name { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: .16em; text-transform: uppercase; }
+.brandline .sep { width: 1px; height: 18px; background: var(--line); }
+.brandline .kind { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+h1 { font-size: clamp(2.1rem, 5.2vw, 3.3rem); font-weight: 700; max-width: 22ch; }
+h1 .tint { color: var(--accent); }
+.standfirst { font-size: 1.06rem; color: var(--muted); max-width: 62ch; }
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.facts div { background: var(--surface); padding: 13px 16px; display: flex; flex-direction: column; gap: 3px; }
+.facts dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.facts dd { margin: 0; font-size: 13.5px; font-weight: 500; }
+
+/* ---- shell: rail + document -------------------------------------------- */
+.shell { display: grid; grid-template-columns: 206px minmax(0, 1fr); gap: 56px; align-items: start; padding-block: 44px 96px; }
+.rail { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); }
+.rail h2 {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--faint); font-weight: 500;
+  padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--line);
+}
+.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.rail a {
+  display: flex; gap: 9px; align-items: baseline;
+  padding: 5px 8px; border-radius: 5px;
+  color: var(--muted); text-decoration: none; font-size: 13px;
+  transition: background .18s ease, color .18s ease;
+}
+.rail a:hover { background: var(--surface-2); color: var(--text); }
+.rail .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); flex: none; }
+
+main { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
+.sec { scroll-margin-top: 24px; display: flex; flex-direction: column; gap: 18px; }
+.sec > p, .sec > ul, .sec > ol { max-width: 74ch; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--accent); font-weight: 500;
+  display: flex; align-items: center; gap: 10px;
+}
+.eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+h2 { font-size: clamp(1.5rem, 3vw, 1.95rem); font-weight: 700; }
+h3 { font-size: 1.06rem; font-weight: 600; }
+h4 { font-family: var(--font-sans); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.02rem; color: var(--muted); }
+strong { font-weight: 600; color: var(--text); }
+code {
+  font-family: var(--font-mono); font-size: .855em;
+  background: var(--surface-2); border: 1px solid var(--line);
+  padding: 1px 5px; border-radius: 4px; color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ---- blocks ------------------------------------------------------------ */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px 22px;
+}
+.quote {
+  border-left: 3px solid var(--accent); padding: 4px 0 4px 18px;
+  font-family: var(--font-display); font-size: 1.24rem; font-weight: 600;
+  letter-spacing: -.01em; max-width: 48ch;
+}
+.note {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--med); border-radius: var(--radius);
+  padding: 15px 18px; font-size: 14.5px; color: var(--muted); max-width: 80ch;
+}
+.note strong { color: var(--text); }
+.note.warn { border-left-color: var(--crit); }
+.note.good { border-left-color: var(--ok); }
+
+/* ---- pipeline ---------------------------------------------------------- */
+.pipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 14px; }
+.stage {
+  background: var(--surface); border: 1px solid var(--line);
+  border-top: 3px solid var(--stage, var(--accent));
+  border-radius: var(--radius); padding: 16px 17px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.stage .num { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em; color: var(--stage, var(--accent)); font-weight: 600; }
+.stage h3 { font-size: 1rem; }
+.stage p { font-size: 13.5px; color: var(--muted); }
+.stage .emit {
+  margin-top: auto; padding-top: 11px; border-top: 1px dashed var(--line);
+  font-family: var(--font-mono); font-size: 11px; color: var(--faint); line-height: 1.5;
+}
+.stage:nth-child(1) { --stage: var(--info); }
+.stage:nth-child(2) { --stage: var(--low); }
+.stage:nth-child(3) { --stage: var(--accent); }
+.stage:nth-child(4) { --stage: var(--ok); }
+
+/* ---- agent cards ------------------------------------------------------- */
+.agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.agent { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 19px; display: flex; flex-direction: column; gap: 12px; }
+.agent-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tag {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .07em;
+  padding: 2px 7px; border-radius: 4px; background: var(--accent-soft);
+  color: var(--accent); border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.tag.grey { background: var(--surface-2); color: var(--muted); border-color: var(--line); }
+.agent dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; font-size: 13px; }
+.agent dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); padding-top: 2px; }
+.agent dd { margin: 0; color: var(--muted); }
+
+/* ---- trust chain ------------------------------------------------------- */
+.chain { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); margin-left: 6px; }
+.rung { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 4px 14px; padding: 12px 0 12px 0; position: relative; }
+.rung::before {
+  content: ""; position: absolute; left: -7px; top: 21px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent);
+}
+.rung .lvl { font-family: var(--font-mono); font-size: 11px; color: var(--faint); padding-top: 2px; }
+.rung .body { display: flex; flex-direction: column; gap: 3px; }
+.rung .id { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.rung .what { font-size: 13.5px; color: var(--muted); }
+.gate {
+  margin: 4px 0 4px 0; padding: 10px 14px;
+  background: var(--surface-2); border: 1px dashed color-mix(in oklab, var(--crit) 45%, var(--line));
+  border-radius: 6px; font-size: 13px; color: var(--muted);
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+}
+.gate .g-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--crit); font-weight: 600; flex: none; }
+.gate.pass { border-color: color-mix(in oklab, var(--ok) 45%, var(--line)); }
+.gate.pass .g-label { color: var(--ok); }
+
+/* ---- tables ------------------------------------------------------------ */
+.scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); font-weight: 500; background: var(--surface-2); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.mono, th.mono, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+tbody tr.total td { font-weight: 600; background: var(--surface-2); }
+
+/* ---- code -------------------------------------------------------------- */
+pre.code {
+  margin: 0; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 18px; overflow-x: auto;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.75; color: var(--text);
+}
+pre.code .c { color: var(--faint); }
+pre.code .k { color: var(--accent); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+
+/* ---- pills / legend ---------------------------------------------------- */
+.pills { display: flex; flex-wrap: wrap; gap: 7px; }
+.pill {
+  font-family: var(--font-mono); font-size: 11.5px; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--muted);
+}
+.pill.ok { color: var(--ok); border-color: color-mix(in oklab, var(--ok) 40%, var(--line)); }
+.pill.crit { color: var(--crit); border-color: color-mix(in oklab, var(--crit) 40%, var(--line)); }
+.pill.med { color: var(--med); border-color: color-mix(in oklab, var(--med) 40%, var(--line)); }
+.pill.low { color: var(--low); border-color: color-mix(in oklab, var(--low) 40%, var(--line)); }
+.pill.info { color: var(--info); border-color: color-mix(in oklab, var(--info) 40%, var(--line)); }
+
+ul.tight, ol.tight { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+ul.tight li::marker { color: var(--accent); }
+ol.tight li::marker { color: var(--faint); font-family: var(--font-mono); font-size: 12px; }
+
+footer {
+  border-top: 1px solid var(--line); padding-block: 26px 44px;
+  color: var(--faint); font-size: 12.5px;
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 32px 72px; }
+  .rail { position: static; }
+  .rail ol { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .rail a { border: 1px solid var(--line); }
+  .masthead { padding-block: 40px 30px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brandline">
+      <span class="mark" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3de8d5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l7 3v5.5c0 4.3-2.9 8.2-7 9.5-4.1-1.3-7-5.2-7-9.5V6z"></path>
+          <path d="M12 8.5v4"></path>
+          <circle cx="12" cy="15.6" r=".9" fill="#3de8d5" stroke="none"></circle>
+        </svg>
+      </span>
+      <span class="name">AI-SOC</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="kind">Team handbook · knowledge transfer</span>
+    </div>
+
+    <h1>An AI security operations centre where <span class="tint">no claim survives without evidence</span>.</h1>
+
+    <p class="standfirst">
+      AI-SOC ingests network-flow logs, detects attacks with deterministic code, correlates them into
+      incidents, and then runs a four-agent LLM investigation whose every factual claim is pinned to a
+      stored evidence record. A fail-closed verifier deletes any claim it cannot support. This handbook
+      is the complete picture: architecture, the four agents, the data model, how to run it, what the
+      numbers actually say, and where it is honestly weak.
+    </p>
+
+    <dl class="facts">
+      <div><dt>Project</dt><dd>Academic capstone</dd></div>
+      <div><dt>Core thesis</dt><dd>Selective intelligence</dd></div>
+      <div><dt>Graded priority</dt><dd>Evidence-grounded agent loop</dd></div>
+      <div><dt>Detection plane</dt><dd>Python 3, stdlib only</dd></div>
+      <div><dt>Investigation plane</dt><dd>LangGraph.js + Gemini</dd></div>
+      <div><dt>Store</dt><dd>Supabase Postgres + RLS</dd></div>
+    </dl>
+  </header>
+
+  <div class="shell">
+    <nav class="rail" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#what"><span class="n">01</span><span>What it is</span></a></li>
+        <li><a href="#thesis"><span class="n">02</span><span>The thesis</span></a></li>
+        <li><a href="#planes"><span class="n">03</span><span>Two planes</span></a></li>
+        <li><a href="#pipeline"><span class="n">04</span><span>Four-stage pipeline</span></a></li>
+        <li><a href="#agents"><span class="n">05</span><span>The four agents</span></a></li>
+        <li><a href="#trust"><span class="n">06</span><span>The trust chain</span></a></li>
+        <li><a href="#detection"><span class="n">07</span><span>What it detects</span></a></li>
+        <li><a href="#data"><span class="n">08</span><span>Data model</span></a></li>
+        <li><a href="#stack"><span class="n">09</span><span>Tech stack</span></a></li>
+        <li><a href="#repo"><span class="n">10</span><span>Repository map</span></a></li>
+        <li><a href="#run"><span class="n">11</span><span>Running it</span></a></li>
+        <li><a href="#results"><span class="n">12</span><span>Measured results</span></a></li>
+        <li><a href="#limits"><span class="n">13</span><span>Limitations</span></a></li>
+        <li><a href="#glossary"><span class="n">14</span><span>Identifier glossary</span></a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ================================================== 01 WHAT -->
+      <section class="sec" id="what">
+        <div class="eyebrow"><span>01</span></div>
+        <h2>What AI-SOC is</h2>
+        <p class="lede">
+          A working research prototype of a security operations centre. It is not a Splunk or Sentinel
+          replacement and does not try to be. It is one coherent end-to-end loop, built to prove a single
+          claim about how LLMs should be used in security work.
+        </p>
+        <p>The loop, in the order a user experiences it:</p>
+        <div class="card">
+          <div class="pills">
+            <span class="pill info">1 · Upload a flow CSV</span>
+            <span class="pill info">2 · Detect</span>
+            <span class="pill info">3 · Correlate into incidents</span>
+            <span class="pill info">4 · Investigate with agents</span>
+            <span class="pill info">5 · Verify every claim</span>
+            <span class="pill info">6 · Read the incident record</span>
+            <span class="pill info">7 · Measure the result</span>
+          </div>
+        </div>
+        <p>
+          A user opens the <strong>Analyze</strong> page, drops in a CICIDS or CICFlowMeter-format
+          <code>.csv</code>, and a local backend runs detection on that file alone. Every flow that trips a
+          detector becomes a signal; signals are grouped into incidents; the incidents are written to
+          Postgres; and then the agent graph runs over each one automatically, streaming its progress back
+          to the page. The result lands in the <strong>Incident Record</strong>: entities, cited evidence,
+          the agent's report, and the verifier's verdicts — including the claims it threw away.
+        </p>
+        <div class="note">
+          <strong>The prototype is deliberately honest about its own reach.</strong> It detects three attack
+          families with real, independent detectors. For roughly eighteen further attack classes it carries
+          the dataset's own label through the pipeline and investigates it, but marks that as an annotation
+          rather than a detection. Section 07 explains exactly which is which.
+        </div>
+      </section>
+
+      <!-- ================================================== 02 THESIS -->
+      <section class="sec" id="thesis">
+        <div class="eyebrow"><span>02</span></div>
+        <h2>The thesis, and the problem it answers</h2>
+
+        <p class="quote">Selective intelligence beats universal intelligence.</p>
+
+        <p>
+          Most "AI SOC" demos hand logs to a language model and print whatever it says. That fails in
+          security work for a specific reason: an analyst cannot act on a finding they cannot audit. A
+          confident sentence about an intrusion is worthless if nothing underneath it can be checked.
+        </p>
+        <p>AI-SOC's answer has three parts:</p>
+        <ol class="tight">
+          <li>
+            <strong>Deterministic code does the work that must be reproducible.</strong> Detection,
+            correlation, risk scoring, and standardisation are Python and SQL. No model touches them. The
+            same file always produces the same incidents.
+          </li>
+          <li>
+            <strong>LLMs are used only after an incident already exists</strong>, and only to reason over
+            evidence that has already been retrieved. They never decide what to look at next, and they never
+            call a tool on their own.
+          </li>
+          <li>
+            <strong>Every factual claim carries a citation, and a verifier that can only say no.</strong>
+            If a claim's citations do not resolve, or the cited text does not actually entail the claim, the
+            claim is deleted — not softened, not caveated. A rejected incident produces no report at all.
+          </li>
+        </ol>
+        <div class="note good">
+          <strong>This is the part that must not be cut.</strong> Any change that makes the system more
+          impressive by letting unsupported claims through is a regression against the project's actual
+          contribution. Section 12 shows the measured effect: unverified, 25% of asserted claims were
+          unsupported; with the verifier, 0%.
+        </div>
+      </section>
+
+      <!-- ================================================== 03 PLANES -->
+      <section class="sec" id="planes">
+        <div class="eyebrow"><span>03</span></div>
+        <h2>Two planes</h2>
+        <p>
+          The architecture splits at a hard line. Everything left of the line is deterministic and cheap;
+          everything right of it costs an LLM call and only runs for incidents that earned one.
+        </p>
+
+        <div class="cols">
+          <div class="card">
+            <h3>Detection plane</h3>
+            <p style="color:var(--muted);font-size:13.5px;margin-top:8px">
+              Python 3, standard library only. Streams the CSV twice — once to build per-cluster aggregates,
+              once to detect and store. Never reads the dataset's <code>Label</code> column for detection.
+              Writes nothing to the database itself; it emits JSON on stdout and the Node backend does the
+              inserts.
+            </p>
+            <div class="pills" style="margin-top:13px">
+              <span class="pill">ml/soccore.py</span>
+              <span class="pill">ml/analyze.py</span>
+              <span class="pill">ml/ingest_cicids.py</span>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Investigation plane</h3>
+            <p style="color:var(--muted);font-size:13.5px;margin-top:8px">
+              TypeScript on LangGraph.js. One incident in, one incident-scoped evidence set out, four
+              bounded LLM calls, every tool call and verdict audited into <code>agent_runs</code>. Control
+              flow is fixed code — the graph is a straight line, with no conditional edges.
+            </p>
+            <div class="pills" style="margin-top:13px">
+              <span class="pill">agents/src/graph.ts</span>
+              <span class="pill">agents/src/agents/*.ts</span>
+              <span class="pill">agents/src/server.ts</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Why the controller is not an LLM.</strong> Letting a model choose which tool to call next
+          makes the run unauditable, opens a prompt-injection surface, and blows the per-incident token
+          budget on traversal instead of reasoning. Here each node calls one specialist with a fixed job and
+          a structured-output schema. The graph is <code>collect → hypothesize → verify → write_report</code>,
+          full stop.
+        </div>
+      </section>
+
+      <!-- ================================================== 04 PIPELINE -->
+      <section class="sec" id="pipeline">
+        <div class="eyebrow"><span>04</span></div>
+        <h2>The four-stage pipeline</h2>
+        <p>
+          This is the operational view of the same system. Stage 1 is code. Stages 2 to 4 are the agents,
+          numbered 1 to 4 in the backend logs as <code>AGENT 1/4</code> through <code>AGENT 4/4</code>.
+        </p>
+
+        <div class="pipe">
+          <div class="stage">
+            <span class="num">STAGE 1</span>
+            <h3>Standardize</h3>
+            <p>
+              A raw uploaded file becomes canonical records. Header aliases are resolved, timestamps parsed,
+              unusable rows dropped, and each surviving flow assigned to exactly one incident. Deterministic
+              Python — no model, no tokens, no variance.
+            </p>
+            <div class="emit">emits → events, signals, incidents<br>engine → ml/analyze.py</div>
+          </div>
+          <div class="stage">
+            <span class="num">STAGE 2</span>
+            <h3>Identify</h3>
+            <p>
+              Agent 1 collects the incident's real events and distils them into checkable evidence facts,
+              then a code gate deletes any fact citing an event that does not exist. Agent 2 reasons only
+              over the survivors and proposes hypotheses, each citing evidence IDs.
+            </p>
+            <div class="emit">emits → EV-… evidence, H-… hypotheses<br>engine → evidence.ts, hypothesis.ts</div>
+          </div>
+          <div class="stage">
+            <span class="num">STAGE 3</span>
+            <h3>Verify &amp; score</h3>
+            <p>
+              Every hypothesis passes a deterministic citation gate, then the survivors face an adversarial
+              entailment check. Rejected claims are recorded, and a grounded confidence percentage is
+              computed in code for the ones that live.
+            </p>
+            <div class="emit">emits → verdicts, confidence %, rejections<br>engine → verifier.ts</div>
+          </div>
+          <div class="stage">
+            <span class="num">STAGE 4</span>
+            <h3>Report</h3>
+            <p>
+              The report writer sees only verified findings — it never sees a rejected hypothesis. It writes
+              the summary, a narrative with inline citations, and recommended actions, and states each
+              attack's confidence and whether a detector corroborated it.
+            </p>
+            <div class="emit">emits → incident summary, timeline<br>engine → report.ts</div>
+          </div>
+        </div>
+
+        <div class="note warn">
+          <strong>Why Stage 1 is not an LLM.</strong> The literal request was for agent 1 to convert the
+          upload into a standard form. Doing that with a model would mean sending thousands of rows through
+          a token budget, making the same file parse differently on different runs, and handing the
+          prompt-injection surface a much larger door. The conversion still happens — it is just code, and
+          the result is reported back to the UI as an inspectable standardisation report.
+        </div>
+      </section>
+
+      <!-- ================================================== 05 AGENTS -->
+      <section class="sec" id="agents">
+        <div class="eyebrow"><span>05</span></div>
+        <h2>The four agents</h2>
+        <p>
+          Each agent makes exactly one structured LLM call per incident. Their input, output, and limits are
+          fixed by schema, so a malformed or over-eager response fails validation instead of leaking into
+          the record.
+        </p>
+
+        <div class="agents">
+          <div class="agent">
+            <div class="agent-top">
+              <span class="tag">AGENT 1/4</span>
+              <h3>Evidence Collector</h3>
+            </div>
+            <dl>
+              <dt>Job</dt><dd>Retrieve this incident's events and signals, distil them into a small set of distinct, checkable facts, then ground them in code.</dd>
+              <dt>Reads</dt><dd><code>getIncident</code>, <code>getIncidentEntities</code>, <code>getIncidentEvents(60)</code>, <code>getSignalsForEvents</code></dd>
+              <dt>Writes</dt><dd><code>evidence</code> rows as <code>EV-&lt;incident&gt;-&lt;n&gt;</code>; an <code>agent_runs</code> audit row</dd>
+              <dt>LLM calls</dt><dd>1</dd>
+              <dt>Prompt rules</dt><dd>Cite real event IDs only; never invent one; no speculation about intent or attribution; few strong facts beat many weak ones.</dd>
+            </dl>
+            <div class="note good" style="max-width:none;font-size:13px;padding:11px 14px">
+              <strong>Grounding gate.</strong> After the model answers, code checks every cited event ID
+              against the events actually retrieved. A fact whose citations all fail is dropped, and the
+              drop is recorded on the run.
+            </div>
+          </div>
+
+          <div class="agent">
+            <div class="agent-top">
+              <span class="tag">AGENT 2/4</span>
+              <h3>Hypothesis / ATT&amp;CK</h3>
+            </div>
+            <dl>
+              <dt>Job</dt><dd>Reason over grounded evidence only, look up candidate ATT&amp;CK techniques, and propose hypotheses that each cite supporting evidence.</dd>
+              <dt>Reads</dt><dd><code>searchAttackKb</code> — seeded with the incident's existing techniques plus keywords pulled from the evidence facts</dd>
+              <dt>Writes</dt><dd><code>agent_runs</code> output <code>{hypotheses, kb_techniques}</code></dd>
+              <dt>LLM calls</dt><dd>1 (maximum 6 hypotheses)</dd>
+              <dt>Prompt rules</dt><dd>Use only the listed evidence; every hypothesis cites at least one evidence ID; pick the single best-fitting technique; actions are simulation-only.</dd>
+            </dl>
+            <div class="note" style="max-width:none;font-size:13px;padding:11px 14px">
+              Citations that do not match stored evidence are stripped here. An empty citation list is left
+              alone on purpose — the verifier's gate is what rejects it, in one place.
+            </div>
+          </div>
+
+          <div class="agent">
+            <div class="agent-top">
+              <span class="tag">AGENT 3/4</span>
+              <h3>Verifier</h3>
+            </div>
+            <dl>
+              <dt>Job</dt><dd>Try to break every hypothesis. Reject anything the cited evidence does not establish on its own, then score what survives.</dd>
+              <dt>Reads</dt><dd><code>getSignalsForEvents</code> on the cited events, to compute the detector component</dd>
+              <dt>Writes</dt><dd>Rejections into <code>agent_runs.unsupported_claims</code>; the confidence assessment</dd>
+              <dt>LLM calls</dt><dd>1 — and only if at least one hypothesis survived the citation gate</dd>
+              <dt>Prompt rules</dt><dd>Adversarial fact-checker. Support only if the cited text alone proves the statement. Never charitable. Rate evidence strength from the shown text, never from prior knowledge.</dd>
+            </dl>
+            <div class="note warn" style="max-width:none;font-size:13px;padding:11px 14px">
+              <strong>Fail-closed.</strong> No verdict returned, an empty citation list, or a citation that
+              does not resolve — all three end in rejection. Silence is never treated as agreement.
+            </div>
+          </div>
+
+          <div class="agent">
+            <div class="agent-top">
+              <span class="tag">AGENT 4/4</span>
+              <h3>Report Writer</h3>
+            </div>
+            <dl>
+              <dt>Job</dt><dd>Turn verified findings into the analyst-facing report. It is never shown a rejected hypothesis.</dd>
+              <dt>Reads</dt><dd>Supported hypotheses, their evidence, the event index, the confidence assessment — no database reads of its own</dd>
+              <dt>Writes</dt><dd><code>incidents.summary</code> and <code>mitre_techniques</code>, plus one <code>incident_timeline</code> row per used evidence fact</dd>
+              <dt>LLM calls</dt><dd>1</dd>
+              <dt>Prompt rules</dt><dd>Assert nothing unsupported; inline <code>[EV-x]</code> citations next to factual narrative claims; state each attack's confidence and say plainly when it rests on the dataset's label; say so when evidence is thin.</dd>
+            </dl>
+            <div class="note" style="max-width:none;font-size:13px;padding:11px 14px">
+              Because the graph returns without calling this agent when zero hypotheses were supported, a
+              fully-rejected incident writes no report and its status stays <code>open</code>.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================== 06 TRUST -->
+      <section class="sec" id="trust">
+        <div class="eyebrow"><span>06</span></div>
+        <h2>The trust chain</h2>
+        <p>
+          The contribution of this project is that a sentence in the final report can be walked backwards
+          to a number produced by a deterministic detector on a stored row. Nothing in the chain is
+          asserted by the model.
+        </p>
+
+        <div class="chain">
+          <div class="rung">
+            <span class="lvl">claim</span>
+            <span class="body">
+              <span class="id">H-INC-…-1</span>
+              <span class="what">A hypothesis the model proposed, e.g. "a volumetric flood from 172.16.0.1 targeted 192.168.10.50:80".</span>
+            </span>
+          </div>
+          <div class="gate">
+            <span class="g-label">Gate A · code</span>
+            <span>Every citation must exist in the evidence table. Empty list, or one unresolvable ID, is an immediate rejection.</span>
+          </div>
+          <div class="rung">
+            <span class="lvl">fact</span>
+            <span class="body">
+              <span class="id">EV-INC-…-1</span>
+              <span class="what">One evidence fact, itself already filtered so that its <code>source_event_ids</code> point at events that exist.</span>
+            </span>
+          </div>
+          <div class="gate">
+            <span class="g-label">Gate B · LLM</span>
+            <span>Shown only the cited evidence text, an adversarial pass asks whether that text, alone, establishes the claim. Anything broader than its evidence is rejected.</span>
+          </div>
+          <div class="rung">
+            <span class="lvl">row</span>
+            <span class="body">
+              <span class="id">event_id</span>
+              <span class="what">The stored flow record, with its timestamp, endpoints, ports and raw feature JSON.</span>
+            </span>
+          </div>
+          <div class="rung">
+            <span class="lvl">signal</span>
+            <span class="body">
+              <span class="id">R-NET-FLOOD · 0.97</span>
+              <span class="what">The detector that fired on that flow, and the score it assigned — read from the database, not from the model.</span>
+            </span>
+          </div>
+        </div>
+
+        <h3 style="margin-top:12px">How the confidence percentage is produced</h3>
+        <p>
+          The model does not get to say how confident it is. It supplies one number — how completely the
+          cited text entails the claim — and code multiplies it by the strongest real detector score behind
+          those same events.
+        </p>
+        <pre class="code"><span class="c">// agents/src/agents/verifier.ts — computed in code, for supported claims only</span>
+confidence_pct = detector_component × entailment_component × 100
+
+detector_component   = max score over the <span class="k">behavioural</span> signals on the cited events
+                       (<span class="k">ANNOTATION_SCORE</span> = 0.5 if the only backing is a dataset label,
+                        0 if there is nothing behind it at all)
+entailment_component = the verifier's evidence_strength for that claim (default 0.5)</pre>
+
+        <p>
+          Two consequences worth understanding. First, an LLM cannot inflate a score — the detector half is
+          read from <code>signals</code>, so a claim about a flow no detector flagged is capped at 50%.
+          Second, every assessment carries a <code>basis</code> label so the UI can never present an
+          annotation-only finding as if an independent detector had confirmed it:
+        </p>
+        <div class="pills">
+          <span class="pill ok">behavioural</span>
+          <span class="pill low">behavioural+annotation</span>
+          <span class="pill med">annotation-only</span>
+        </div>
+      </section>
+
+      <!-- ================================================== 07 DETECTION -->
+      <section class="sec" id="detection">
+        <div class="eyebrow"><span>07</span></div>
+        <h2>What it detects — and what it only carries</h2>
+        <p>
+          This is the section to read before demoing the project, because it is where the honest boundary
+          sits. There are three tiers of capability, and only the first is detection in the strict sense.
+        </p>
+
+        <div class="cols">
+          <div class="card">
+            <h4>Tier 1 — independently detected</h4>
+            <h3 style="margin-top:6px">3 attack families</h3>
+            <p style="color:var(--muted);font-size:13.5px;margin-top:8px">
+              Real behavioural detectors over flow features. No label involved. These produce genuine
+              true/false positives and are what the detection metrics measure.
+            </p>
+            <div class="pills" style="margin-top:12px">
+              <span class="pill">T1110 brute force</span>
+              <span class="pill">T1498 flood</span>
+              <span class="pill">T1071 beaconing</span>
+            </div>
+          </div>
+          <div class="card">
+            <h4>Tier 2 — carried and investigated</h4>
+            <h3 style="margin-top:6px">18 labelled attack classes</h3>
+            <p style="color:var(--muted);font-size:13.5px;margin-top:8px">
+              When the uploaded file has a label column, 43 signature patterns map non-benign labels to a
+              canonical class and technique. These flow through the agents and get reports — flagged as an
+              annotation, never as detection.
+            </p>
+            <div class="pills" style="margin-top:12px">
+              <span class="pill med">SQL Injection</span>
+              <span class="pill med">XSS</span>
+              <span class="pill med">Port Scanning</span>
+              <span class="pill med">Ransomware</span>
+              <span class="pill med">Phishing</span>
+              <span class="pill med">+13 more</span>
+            </div>
+          </div>
+          <div class="card">
+            <h4>Tier 3 — not supported</h4>
+            <h3 style="margin-top:6px">Unlabelled, non-flow attacks</h3>
+            <p style="color:var(--muted);font-size:13.5px;margin-top:8px">
+              A file with no label column, or logs that are not network flows at all, produces nothing.
+              The parser rejects it with a clean error explaining which canonical columns were missing —
+              it does not crash and it does not invent incidents.
+            </p>
+          </div>
+        </div>
+
+        <h3>The behavioural detectors</h3>
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th class="mono">Detector ref</th><th>Family</th><th>Fires when</th><th class="mono">Score</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">R-NET-BRUTEFORCE</td><td>brute_force</td>
+                <td>Destination port is 21 or 22 and ≥30 flows hit the same (src, dst, port)</td>
+                <td class="mono">min(0.95, 0.6 + log₁₀n⁄8)</td>
+              </tr>
+              <tr>
+                <td class="mono">R-NET-FLOOD</td><td>flood</td>
+                <td>Destination port is not 53 or 123 and ≥3000 flows hit the same (src, dst, port)</td>
+                <td class="mono">min(0.97, 0.7 + log₁₀n⁄10)</td>
+              </tr>
+              <tr>
+                <td class="mono">flow_rate_zscore</td><td>flood</td>
+                <td>Flow packet rate is more than 3 standard deviations above the file's mean — a statistical corroborator that folds into the flood family</td>
+                <td class="mono">min(0.9, 0.4 + z⁄40)</td>
+              </tr>
+              <tr>
+                <td class="mono">R-NET-BEACON</td><td>beacon</td>
+                <td>Internal host → external host on a non-web port, ≥20 flows, and at least 3 distinct internal sources reach that same destination</td>
+                <td class="mono">0.75 + min(0.2, fan-in⁄50)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>How one flow becomes exactly one incident</h3>
+        <p>
+          A flow can trip two families at once — a high-volume SSH attack satisfies both the brute-force
+          and the flood thresholds. If both claimed it, the same event would appear in two incidents and
+          quietly re-introduce cross-scenario leakage. So ownership is assigned once, by fixed priority:
+        </p>
+        <pre class="code"><span class="c"># the sort key is (family priority, then -score, then key)</span>
+brute_force(0)  &gt;  beacon(1)  &gt;  flood(2)  &gt;  labelled(9)
+
+<span class="c"># priority must come FIRST, not score: the flood detector caps at 0.97 and the
+# brute-force detector at 0.95, so an argmax on score alone would file a port-22
+# credential flood under DDoS. Annotation families rank last by design.</span>
+
+cluster keys:  brute_force → (src, dst)     flood → (dst, dport)
+               beacon → (dst,)              labelled → (dst,)</pre>
+
+        <h3>The eval-integrity guard</h3>
+        <p>
+          When a file has labels, it is tempting to count the label signal as a detection and report a
+          perfect F1. That would be scoring the label against itself. Instead the behavioural verdict is
+          captured <em>before</em> the annotation is appended, so the confusion matrix always measures the
+          real detectors:
+        </p>
+        <pre class="code">sigs = detect(row, idx, aggs, SCEN)
+pred = len(sigs) &gt; 0        <span class="c"># ← behavioural verdict, captured HERE</span>
+…
+if has_label and is_attack:
+    sigs = sigs + [label signal]   <span class="c"># appended after — never counted as a prediction</span></pre>
+        <p>
+          Alongside the metrics, each class gets a <strong>corroboration rate</strong>: of the flows the
+          dataset annotated as this attack, what share did an independent detector also flag. This is the
+          number that tells you whether the annotation is backed by anything.
+        </p>
+        <div class="note">
+          <strong>Two contrasting results, both real.</strong> On a DDoS slice, corroboration is 100% and
+          F1 is 1.0 — the detectors genuinely see it. On a SQL-injection slice, corroboration is 0% and F1
+          is 0.0. That 0.0 is the guard working: a self-scoring implementation would have reported 1.0 and
+          been lying.
+        </div>
+      </section>
+
+      <!-- ================================================== 08 DATA -->
+      <section class="sec" id="data">
+        <div class="eyebrow"><span>08</span></div>
+        <h2>Data model</h2>
+        <p>
+          Eleven tables plus one for upload batches, defined across three migrations in
+          <code>supabase/migrations/</code>. Everything an analyst reads is in Postgres; the browser never
+          writes to it.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th class="mono">Table</th><th>Holds</th><th>Key columns</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">events</td><td>One normalised log record</td><td class="mono">event_id, ts, src_ip, dst_ip, severity, mitre_tags, raw</td></tr>
+              <tr><td class="mono">signals</td><td>One detector hit on one event</td><td class="mono">signal_id, event_id, detector, detector_ref, score, reason</td></tr>
+              <tr><td class="mono">detection_rules</td><td>The rule catalogue shown in the UI</td><td class="mono">rule_id, title, detector, mitre_tags, severity</td></tr>
+              <tr><td class="mono">alerts</td><td>Deduplicated detector signals, per entity</td><td class="mono">alert_id, confidence, contributions, event_ids[], incident_id</td></tr>
+              <tr><td class="mono">incidents</td><td>The correlated case</td><td class="mono">incident_id, code (unique), risk_score, risk_factors, summary, status</td></tr>
+              <tr><td class="mono">incident_entities</td><td>Actors, targets and victims of a case</td><td class="mono">(incident_id, entity_type, entity_value), role</td></tr>
+              <tr><td class="mono">evidence</td><td>Grounded facts cited by hypotheses</td><td class="mono">evidence_id, incident_id, source_event_ids[], fact, provenance</td></tr>
+              <tr><td class="mono">agent_runs</td><td>The full audit trail of every agent</td><td class="mono">run_id, agent, tools_used, output, unsupported_claims, tokens, latency_ms</td></tr>
+              <tr><td class="mono">incident_timeline</td><td>Chronology built from used evidence</td><td class="mono">incident_id, ts, label, evidence_id</td></tr>
+              <tr><td class="mono">attack_kb</td><td>16 ATT&amp;CK techniques, searchable</td><td class="mono">technique_id, name, tactic, description</td></tr>
+              <tr><td class="mono">feedback</td><td>Analyst labelling on alerts</td><td class="mono">id, alert_id, label, note</td></tr>
+              <tr><td class="mono">ingest_batches</td><td>One row per upload</td><td class="mono">batch_id, label, source_filename, event_count, incident_count, status</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Who can write what</h3>
+        <p>
+          Row-level security is enabled on every table with exactly one policy each:
+          <code>for select to anon, authenticated using (true)</code>. There is no insert, update or delete
+          policy anywhere. The consequence is a clean split:
+        </p>
+        <ul class="tight">
+          <li>The <strong>browser</strong> holds the anon key and can read everything, write nothing.</li>
+          <li>The <strong>local Node backend</strong> connects with the secret <code>DATABASE_URL</code> and performs every write — batch inserts, evidence, agent runs, reports.</li>
+        </ul>
+        <div class="note warn">
+          <strong>The backend is unauthenticated by design.</strong> It binds <code>127.0.0.1</code>, runs
+          uploaded CSVs through the parser, and writes with a credential that bypasses RLS. It must never be
+          exposed beyond localhost, and CORS stays restricted to the dev origin.
+        </div>
+        <p>
+          Batch isolation is a second axis of separation. Every UI upload creates an <code>ingest_batches</code>
+          row that is stamped onto its events, signals, alerts, incidents and entities. The seeded CICIDS
+          baseline keeps <code>batch_id = NULL</code> and appears in the UI as the "CICIDS Seed" dataset.
+        </p>
+      </section>
+
+      <!-- ================================================== 09 STACK -->
+      <section class="sec" id="stack">
+        <div class="eyebrow"><span>09</span></div>
+        <h2>Tech stack</h2>
+        <p>
+          The stack is frozen. Stability is worth more than architectural purity at this stage, and every
+          substitution below was chosen because the alternative was not worth the migration risk.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th>Layer</th><th>What we use</th><th>Why this, and not the obvious alternative</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Frontend</td>
+                <td class="mono">React 19 · TanStack Start + Router · Tailwind v4 · Radix/shadcn · Recharts · Vite</td>
+                <td>File-based routing with a shared analyst shell. No Next.js — the routing need is small and this keeps SSR out of the way of a read-only dashboard.</td>
+              </tr>
+              <tr>
+                <td>Backend</td>
+                <td class="mono">Node 24 · Express · multer · pg · tsx</td>
+                <td>Needed for exactly two things RLS forbids the browser from doing: writing to Postgres and spawning the Python analyser.</td>
+              </tr>
+              <tr>
+                <td>Detection</td>
+                <td class="mono">Python 3 · standard library only</td>
+                <td>No pandas, no scikit-learn, no psycopg. The files are 70–170 MB and must stream; the stdlib <code>csv</code> reader does that without a dependency or an install step.</td>
+              </tr>
+              <tr>
+                <td>Agents</td>
+                <td class="mono">LangGraph.js · zod structured output</td>
+                <td>LangGraph in TypeScript rather than Python so the graph shares the backend's DB pool and types. Every agent output is schema-validated.</td>
+              </tr>
+              <tr>
+                <td>LLM</td>
+                <td class="mono">Google Gemini via @langchain/google-genai</td>
+                <td>Free tier. Calls are serialised process-wide at ≥13 s apart to stay under the rate limit — which is also why only one upload can run at a time.</td>
+              </tr>
+              <tr>
+                <td>Database</td>
+                <td class="mono">Supabase Postgres · RLS · PostgREST</td>
+                <td>Gives the browser a read API for free. ClickHouse and Kafka were both cut as irrelevant at this scale.</td>
+              </tr>
+              <tr>
+                <td>Deep learning</td>
+                <td class="mono">Hand-written numpy MLP</td>
+                <td>69 → 64 → 32 → 1, ReLU, sigmoid, Adam. Written from scratch because PyTorch is not installed on the target box and the architecture is frozen — see section 12.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================================================== 10 REPO -->
+      <section class="sec" id="repo">
+        <div class="eyebrow"><span>10</span></div>
+        <h2>Repository map</h2>
+        <p>Where to look for what. This is the fastest way into the codebase.</p>
+
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th class="mono">Path</th><th>What lives there</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">ml/soccore.py</td><td>The shared detection core — detectors, thresholds, ATT&amp;CK knowledge base, header aliases, timestamp parsing, the label bridge. Both the seed and the upload path import from it.</td></tr>
+              <tr><td class="mono">ml/analyze.py</td><td>One uploaded CSV → incidents JSON on stdout. The dynamic sibling of the seed pipeline, and the whole of Stage 1.</td></tr>
+              <tr><td class="mono">ml/ingest_cicids.py</td><td>The reproducible seed: three fixed CICIDS2017 captures → <code>data/cicids_seed.sql</code> plus <code>data/cicids_eval.json</code>. Never touches the database.</td></tr>
+              <tr><td class="mono">ml/train_mlp.py</td><td>The offline MLP artifact and its metrics and figures.</td></tr>
+              <tr><td class="mono">ml/make_demo_slices.py</td><td>Builds the small upload-ready demo CSVs under <code>data/cicids/demo/</code> that keep a demo inside the Gemini quota.</td></tr>
+              <tr><td class="mono">ml/pipeline.py</td><td>The older synthetic-log path (template mining → OCSF normalise → rules). Separate from the CICIDS path; not used by the upload flow.</td></tr>
+              <tr><td class="mono">agents/src/graph.ts</td><td>The LangGraph state machine and the streaming variant the backend uses for live progress.</td></tr>
+              <tr><td class="mono">agents/src/agents/</td><td>One file per agent: <code>evidence.ts</code>, <code>hypothesis.ts</code>, <code>verifier.ts</code>, <code>report.ts</code>.</td></tr>
+              <tr><td class="mono">agents/src/tools.ts</td><td>Every database read and write an agent is allowed to make, as parameterised SQL.</td></tr>
+              <tr><td class="mono">agents/src/llm.ts</td><td>The model factory, the process-wide throttle, the retry policy, error classification, and the prompt-injection guard wrapped around all untrusted telemetry.</td></tr>
+              <tr><td class="mono">agents/src/server.ts</td><td>The Express upload backend: mutex, chunked transactional inserts, job store, async investigation loop.</td></tr>
+              <tr><td class="mono">agents/src/run.ts · eval.ts</td><td>CLI investigation and the offline evaluation harness that reads stored runs without spending tokens.</td></tr>
+              <tr><td class="mono">web/src/routes/</td><td>Five routes: <code>/</code>, <code>/analyze</code>, <code>/alerts</code>, <code>/incidents</code>, <code>/incidents/$incidentId</code>.</td></tr>
+              <tr><td class="mono">web/src/components/soc/</td><td>The screens. <code>analyze.tsx</code> is the only component that talks to the local backend; everything else is a read-only Supabase query.</td></tr>
+              <tr><td class="mono">web/src/lib/live-api.ts</td><td>The complete read API over PostgREST, including the batch filter.</td></tr>
+              <tr><td class="mono">supabase/migrations/</td><td><code>0001_init.sql</code> schema · <code>0002_alerts_rls.sql</code> RLS + <code>build_alerts()</code> · <code>0003_batches.sql</code> upload batches.</td></tr>
+              <tr><td class="mono">docs/</td><td><code>project-plan-updated.md</code> the plan · <code>demo-scenarios.md</code> the demo script · <code>execution-phases.md</code> the phase tracker.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================================================== 11 RUN -->
+      <section class="sec" id="run">
+        <div class="eyebrow"><span>11</span></div>
+        <h2>Running it</h2>
+        <p>
+          Two processes, one database. The frontend will load without the backend, but uploads and
+          investigations will not run.
+        </p>
+
+        <h3>Environment</h3>
+        <p>
+          Copy <code>.env.example</code> to <code>.env</code> at the repo root and fill it in. Both
+          <code>.env</code> and <code>web/.env.local</code> are gitignored; the example file keeps
+          placeholders only. Never commit a real value.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="mono">Variable</th><th>Used by</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">DATABASE_URL</td><td>backend, seed scripts</td><td>Postgres connection string. Bypasses RLS — this is the write path.</td></tr>
+              <tr><td class="mono">GEMINI_API_KEY</td><td>agents</td><td>Model access. Required.</td></tr>
+              <tr><td class="mono">GEMINI_MODEL</td><td>agents</td><td>Optional override; the default id is set in <code>agents/src/env.ts</code>.</td></tr>
+              <tr><td class="mono">PORT · MAX_UPLOAD_MB · CORS_ORIGIN</td><td>backend</td><td>All optional. Defaults: 8787, 300 MB, the local dev origin.</td></tr>
+              <tr><td class="mono">VITE_ANALYZE_API</td><td>frontend</td><td>Where the backend lives. Defaults to <code>http://127.0.0.1:8787</code>.</td></tr>
+              <tr><td class="mono">VITE_SUPABASE_URL · VITE_SUPABASE_ANON_KEY</td><td>frontend</td><td>The read-only publishable credentials for PostgREST.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>From zero to a running demo</h3>
+        <pre class="code"><span class="c"># 1 — dependencies</span>
+cd agents &amp;&amp; npm install
+cd ../web &amp;&amp; npm install &amp;&amp; cd ..
+
+<span class="c"># 2 — database schema (all three migrations, in order)</span>
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_alerts_rls.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0003_batches.sql
+
+<span class="c"># 3 — the seeded CICIDS baseline (needs the raw CSVs, see the note below)</span>
+python3 ml/ingest_cicids.py
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data/cicids_seed.sql
+
+<span class="c"># 4 — two terminals</span>
+cd agents &amp;&amp; npm run server     <span class="c"># backend on 127.0.0.1:8787</span>
+cd web    &amp;&amp; npm run dev        <span class="c"># frontend on http://localhost:5173</span></pre>
+
+        <div class="note warn">
+          <strong>Do not use <code>scripts/load_db.sh</code> to set up a fresh database.</strong> It applies
+          only <code>0001</code> and the synthetic seed — it never applies <code>0002</code> or
+          <code>0003</code>. A database loaded that way has no RLS policies and no
+          <code>ingest_batches</code> table, so batch filtering and the whole upload path fail. Run the
+          three migrations explicitly, as above.
+        </div>
+
+        <h3>Command reference</h3>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="mono">Command</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">npm run server <span style="color:var(--faint)">(agents/)</span></td><td>Start the upload and investigation backend.</td></tr>
+              <tr><td class="mono">npm run investigate -- INC-2017-0002</td><td>Run the agent graph on one incident from the CLI and print evidence, hypotheses, verdicts and the report.</td></tr>
+              <tr><td class="mono">npm run investigate -- all</td><td>Same, for every incident. Costs real quota.</td></tr>
+              <tr><td class="mono">npm run eval</td><td>Rebuild <code>data/investigation_eval.json</code> from stored runs. Makes no LLM calls.</td></tr>
+              <tr><td class="mono">npm run typecheck <span style="color:var(--faint)">(agents/)</span></td><td>Typecheck the agent and backend sources.</td></tr>
+              <tr><td class="mono">python3 ml/analyze.py file.csv</td><td>Run Stage 1 standalone and print the JSON. Useful for debugging a dataset without touching the database.</td></tr>
+              <tr><td class="mono">python3 ml/make_demo_slices.py</td><td>Rebuild the small demo CSVs.</td></tr>
+              <tr><td class="mono">python3 ml/train_mlp.py</td><td>Retrain the MLP and regenerate its metrics and figures.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Datasets</h3>
+        <p>
+          The raw CICIDS2017 captures are large public downloads and are gitignored — get them from the
+          Canadian Institute for Cybersecurity's IDS 2017 page and place them in <code>data/cicids/</code>.
+          The small demo slices under <code>data/cicids/demo/</code> are committed, and they are what a demo
+          should use:
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="mono">Slice</th><th>Attack</th><th>Detectors exercised</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">demo_bruteforce_T1110.csv</td><td>FTP/SSH brute force</td><td class="mono">R-NET-BRUTEFORCE</td></tr>
+              <tr><td class="mono">demo_ddos_T1498.csv</td><td>Volumetric HTTP flood</td><td class="mono">R-NET-FLOOD, flow_rate_zscore</td></tr>
+              <tr><td class="mono">demo_botnet_T1071.csv</td><td>Ares C2 beaconing</td><td class="mono">R-NET-BEACON</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <strong>Never demo on a raw day-file.</strong> A full capture discovers roughly nine incidents,
+          and the investigation stage spends real Gemini free-tier quota per incident. The slices exist to
+          make a demo fast and repeatable. Also budget for it: the per-call throttle is 13 seconds and an
+          incident takes four calls, so one incident is about 45 seconds of wall clock.
+        </div>
+      </section>
+
+      <!-- ================================================== 12 RESULTS -->
+      <section class="sec" id="results">
+        <div class="eyebrow"><span>12</span></div>
+        <h2>Measured results</h2>
+        <p>
+          Three separate evaluations, all reproducible from the repository. The numbers below are the ones
+          stored in <code>data/</code>, not recalled from a slide.
+        </p>
+
+        <h3>Detection — behavioural detectors over all CICIDS2017 flows</h3>
+        <p style="font-size:14px;color:var(--muted)">
+          Predicted-attack means at least one behavioural signal fired. The dataset label is used only to
+          score the result, never to produce it.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead>
+              <tr><th>Scenario</th><th class="num">TP</th><th class="num">FP</th><th class="num">FN</th><th class="num">TN</th><th class="num">Precision</th><th class="num">Recall</th><th class="num">F1</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Brute force</td><td class="num">13,834</td><td class="num">3,403</td><td class="num">1</td><td class="num">428,671</td><td class="num">0.8026</td><td class="num">0.9999</td><td class="num">0.8904</td></tr>
+              <tr><td>DDoS</td><td class="num">128,024</td><td class="num">645</td><td class="num">3</td><td class="num">97,073</td><td class="num">0.9950</td><td class="num">1.0000</td><td class="num">0.9975</td></tr>
+              <tr><td>Botnet</td><td class="num">1,257</td><td class="num">1,483</td><td class="num">709</td><td class="num">187,584</td><td class="num">0.4588</td><td class="num">0.6394</td><td class="num">0.5342</td></tr>
+              <tr class="total"><td>Overall</td><td class="num">143,115</td><td class="num">5,531</td><td class="num">713</td><td class="num">713,328</td><td class="num">0.9628</td><td class="num">0.9950</td><td class="num">0.9787</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:14px;color:var(--muted)">
+          Read the botnet row honestly: 0.53 F1 is the weak point, and it is expected. Low-and-slow C2
+          beaconing is the hardest pattern to see in per-flow features alone, and the aggregate fell out of
+          the overall figure only because the flood and brute-force corpora are far larger.
+        </p>
+
+        <h3>Deep learning — offline MLP artifact</h3>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Property</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Model</td><td class="mono">69 → Dense 64 + ReLU → Dense 32 + ReLU → Dense 1 + Sigmoid</td></tr>
+              <tr><td>Implementation</td><td class="mono">numpy, hand-written forward and backprop, Adam, binary cross-entropy</td></tr>
+              <tr><td>Training</td><td class="mono">20 epochs · lr 0.001 · seed 1337 · 69 features</td></tr>
+              <tr><td>Split</td><td class="mono">53,059 train / 22,742 test (stratified 70/30)</td></tr>
+              <tr><td>Test metrics</td><td class="mono">P 0.9770 · R 0.9975 · F1 0.9871 · accuracy 0.9894 · ROC-AUC 0.9996</td></tr>
+              <tr><td>Confusion matrix</td><td class="mono">TN 13,284 · FP 217 · FN 23 · TP 9,218</td></tr>
+              <tr><td>Final train loss</td><td class="mono">0.0249</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          <strong>This model is not wired into the live pipeline.</strong> The architecture is frozen and the
+          MLP is an offline evaluation artifact that satisfies the deep-learning requirement. Do not describe
+          it as part of the runtime path in the report or the viva. The figures it produces live in
+          <code>docs/figures/</code>.
+        </div>
+
+        <h3>Investigation — the verifier's effect</h3>
+        <p style="font-size:14px;color:var(--muted)">
+          From <code>data/investigation_eval.json</code>, rebuilt from stored <code>agent_runs</code> with no
+          new LLM calls. Both arms come from the same investigations: "without verifier" ships every
+          hypothesis; "with verifier" ships only the supported ones.
+        </p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Measure</th><th class="num">Without verifier</th><th class="num">With verifier</th></tr></thead>
+            <tbody>
+              <tr><td>Claims asserted</td><td class="num">4</td><td class="num">3</td></tr>
+              <tr><td>Unsupported claims asserted</td><td class="num">1</td><td class="num">0</td></tr>
+              <tr><td>Unsupported rate</td><td class="num">25%</td><td class="num">0%</td></tr>
+              <tr class="total"><td>Claims blocked</td><td class="num">—</td><td class="num">1</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:14px;color:var(--muted)">
+          Supporting aggregates: 4 investigations over 3 incidents · 16 evidence facts collected, 0 dropped
+          by the grounding gate · claim grounding coverage 100% · average 20,469 tokens and 42.7 s per
+          investigation.
+        </p>
+
+        <div class="card">
+          <h4>The rejected claim, in full</h4>
+          <p style="margin-top:9px;font-size:14.5px">
+            On <code>INC-2017-0002</code> the hypothesis agent asserted that "multiple hosts including
+            192.168.10.8 made repeated or multiple connection attempts via SSH to target 192.168.10.50 on
+            port 22, indicating possible credential guessing behaviour."
+          </p>
+          <p style="margin-top:11px;font-size:14.5px;color:var(--muted)">
+            The verifier checked the citations and found that <code>EV-INC-2017-0002-1</code>,
+            <code>-2</code> and <code>-4</code> each record a <em>single</em> connection attempt, from
+            192.168.10.16, .17 and .19 — not repeated attempts from 192.168.10.8. The claim was broader than
+            its evidence, so it was rejected and no report was written for that run.
+          </p>
+          <p style="margin-top:11px;font-size:14.5px">
+            <strong>This is the demo's headline.</strong> A plausible, well-written, entirely wrong
+            attribution was caught by the citation gate rather than reaching an analyst.
+          </p>
+        </div>
+
+        <h3>The same incident, after the retrieval fix</h3>
+        <p>
+          That rejection had a second cause worth understanding, because it is the project's best bug story.
+          <code>INC-2017-0001</code> and <code>INC-2017-0002</code> share an actor and a target IP, so the
+          original evidence retrieval — "fetch every event where this IP is source or destination" — pulled
+          the SSH flows and the HTTP flood flows into the same evidence packet. The model saw port-22 traffic
+          inside a DDoS incident and reasoned about it correctly given what it was shown.
+        </p>
+        <p>
+          The fix is one query: evidence is now scoped by the incident's own
+          <code>alerts.event_ids</code>, with the entity-IP lookup kept only as a fallback. Re-running
+          <code>INC-2017-0002</code> afterwards produced a single grounded fact, one supported hypothesis,
+          and a correct <strong>T1498 volumetric flood</strong> report. The wrong hypothesis was not
+          suppressed — it was never formed, because the evidence no longer supported it.
+        </p>
+      </section>
+
+      <!-- ================================================== 13 LIMITS -->
+      <section class="sec" id="limits">
+        <div class="eyebrow"><span>13</span></div>
+        <h2>Known limitations and gotchas</h2>
+        <p>
+          Read this before presenting. Every item here is something a sharp examiner could otherwise raise,
+          and having the answer ready is worth more than hoping it does not come up.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Limitation</th><th>Why it exists, and what to say</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Three independently detected attack families</td>
+                <td>The detectors are real but few. Two attacks that work correctly beat ten that do not; the label bridge extends coverage honestly rather than by pretending.</td>
+              </tr>
+              <tr>
+                <td>Botnet detection is weak (F1 0.53)</td>
+                <td>Low-and-slow beaconing is genuinely hard on per-flow features. State it as a measured limitation, not a hidden one.</td>
+              </tr>
+              <tr>
+                <td>The MLP is offline only</td>
+                <td>The architecture was frozen to protect the graded agent loop. It is an evaluation artifact.</td>
+              </tr>
+              <tr>
+                <td>No live collection</td>
+                <td>Ingestion is file-based and offline. A live collector was explicitly out of scope.</td>
+              </tr>
+              <tr>
+                <td>The backend is unauthenticated</td>
+                <td>It is designed for <code>127.0.0.1</code> only and must never be exposed. This is a stated deployment boundary, not an oversight.</td>
+              </tr>
+              <tr>
+                <td>Free-tier quota governs the demo</td>
+                <td>Calls are throttled to one per 13 seconds and uploads are serialised. Only one analysis runs at a time; a second upload is refused with HTTP 409 and a clear message.</td>
+              </tr>
+              <tr>
+                <td>A rejected incident is invisible over the read API</td>
+                <td>With no report, its status stays <code>open</code> — indistinguishable from "still running". The backend's in-memory job store carries the real terminal state, which is why the UI polls it.</td>
+              </tr>
+              <tr>
+                <td>Uploads are truncated at 12 incidents</td>
+                <td>Each incident costs LLM quota, so a many-class dataset is cut to the twelve highest-risk and the drop is reported in the UI. It is never silent.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Smaller things that will bite</h3>
+        <ul class="tight">
+          <li><code>alerts.incident_id</code> is a bare column with no foreign key, despite the migration comment implying one. Do not rely on referential integrity there.</li>
+          <li><code>web/src/lib/soc-snapshot.ts</code> is a static fallback snapshot with no importers. It is leftover from the unconnected-preview mode.</li>
+          <li>Empty trailing rows in CICIDS files are treated as benign. This is harmless but it is why a file can report more rows read than rows standardised.</li>
+          <li>The label bridge's <code>LABEL_SCORE</code> of 0.5 and the verifier's <code>ANNOTATION_SCORE</code> of 0.5 are the same constant in two languages. If you change one, change the other.</li>
+          <li>The evaluation numbers in section 12 predate the four-stage pipeline refactor and the attack-class bridge. The verifier logic they measure is unchanged, but regenerate with <code>npm run eval</code> before quoting them in a final report.</li>
+        </ul>
+      </section>
+
+      <!-- ================================================== 14 GLOSSARY -->
+      <section class="sec" id="glossary">
+        <div class="eyebrow"><span>14</span></div>
+        <h2>Identifier glossary</h2>
+        <p>
+          Almost everything in this system has a stable ID. Being able to read them at a glance makes the
+          incident record, the logs and the database legible.
+        </p>
+
+        <div class="scroller">
+          <table>
+            <thead><tr><th class="mono">Pattern</th><th>Meaning</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">INC-{date}-{batch}-{nnn}</td><td>Incident code. The batch fragment makes it globally unique across uploads; incidents are numbered by descending risk.</td><td class="mono">INC-20261002-a1b2c3-001</td></tr>
+              <tr><td class="mono">INC-2017-000n</td><td>The three fixed seeded incidents from the CICIDS baseline.</td><td class="mono">INC-2017-0002</td></tr>
+              <tr><td class="mono">EV-&lt;incident&gt;-&lt;n&gt;</td><td>One evidence fact. The thing hypotheses cite.</td><td class="mono">EV-INC-2017-0002-1</td></tr>
+              <tr><td class="mono">H-&lt;incident&gt;-&lt;n&gt;</td><td>One proposed hypothesis, before verification.</td><td class="mono">H-INC-2017-0002-1</td></tr>
+              <tr><td class="mono">R-NET-*</td><td>A behavioural detection rule. The <code>R-</code> prefix means rule; <code>NET</code> means network.</td><td class="mono">R-NET-FLOOD</td></tr>
+              <tr><td class="mono">LBL-&lt;SLUG&gt;</td><td>A label-derived annotation, not a detector. Seeing this in a reason string means the dataset said so, not the system.</td><td class="mono">LBL-SQL-INJECTION</td></tr>
+              <tr><td class="mono">T#### / T####.###</td><td>MITRE ATT&amp;CK technique, sub-technique after the dot.</td><td class="mono">T1110 · T1059.007</td></tr>
+              <tr><td class="mono">labelled:&lt;Class&gt;</td><td>An annotation-derived incident family. Always ranks below every behavioural family.</td><td class="mono">labelled:SQL Injection</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Investigation phases seen in the UI</h3>
+        <div class="pills">
+          <span class="pill">queued</span>
+          <span class="pill info">collecting</span>
+          <span class="pill info">hypothesizing</span>
+          <span class="pill low">verifying</span>
+          <span class="pill low">reporting</span>
+          <span class="pill ok">done_with_report</span>
+          <span class="pill med">done_no_report</span>
+          <span class="pill crit">error</span>
+        </div>
+        <p>
+          <code>done_no_report</code> is a success, not a failure. It means every hypothesis was rejected —
+          the verifier did its job and the system declined to write a report it could not support.
+        </p>
+
+        <h3>Vocabulary worth being precise about</h3>
+        <ul class="tight">
+          <li><strong>Detector</strong> — behavioural code that flags a flow. Only four of these exist.</li>
+          <li><strong>Signal</strong> — one detector's hit on one event, with a score and a reason.</li>
+          <li><strong>Annotation</strong> — a non-benign label from the uploaded file, carried through and clearly marked. Never described as detection.</li>
+          <li><strong>Corroboration</strong> — an independent detector flagged the same flow the label called an attack. The percentage is the honesty metric.</li>
+          <li><strong>Grounding</strong> — a claim's citations resolve to stored evidence. Failing this means the claim is dropped.</li>
+          <li><strong>Entailment</strong> — the cited evidence, on its own, establishes the claim. Failing this means the claim is rejected.</li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <span>AI-SOC — evidence-grounded multi-agent security operations centre.</span>
+    <span class="mono">Team handbook · source of truth is the repository</span>
+  </footer>
+</div>

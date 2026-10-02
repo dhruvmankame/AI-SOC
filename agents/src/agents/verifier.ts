@@ -1,21 +1,30 @@
 import { reason } from '../llm.js';
 import { recordAgentRun, getSignalsForEvents } from '../tools.js';
+import { techniqueConflict } from '../mitre.js';
 import { VerifierOut } from '../state.js';
-import type { EvidenceItem, Hypothesis, Verdict, AttackAssessment } from '../state.js';
+import type { EvidenceItem, Hypothesis, Verdict, AttackAssessment, SignalRow } from '../state.js';
 
 // ============================================================================
 // Agent 3 — VERIFIER / CRITIC + CONFIDENCE SCORER  (the graded centrepiece)
 //
 // Stage 3 of the pipeline does two jobs, in this order:
 //
-//   VERIFY (fail-closed) — a two-stage adversarial check on every hypothesis:
-//     (A) DETERMINISTIC gate — a hypothesis with no citations, or whose
-//         citations don't all resolve to real evidence, is rejected in code.
-//         No LLM can argue its way past this.
-//     (B) LLM ENTAILMENT check — survivors are shown ONLY the evidence they
-//         cited and asked whether it genuinely supports the statement.
-//   A hypothesis is "supported" only if it passes BOTH. Everything rejected is
-//   written to agent_runs.unsupported_claims.
+//   VERIFY (fail-closed) — a three-stage adversarial check on every hypothesis:
+//     (A1) CITATION gate — a hypothesis with no citations, or whose citations
+//          don't all resolve to real evidence, is rejected in code.
+//     (A2) CONSISTENCY gate — a hypothesis may not name an attack family that
+//          the behavioural detectors behind its OWN cited evidence contradict.
+//          The cited events are read from the signals table, so this is decided
+//          by detector output, not by the model. It catches the case where
+//          evidence for one scenario reaches an investigation of another (two
+//          incidents sharing an actor/target IP) and the model then forms a
+//          technically-consistent-but-wrong conclusion from it.
+//     (B)  LLM ENTAILMENT check — survivors are shown ONLY the evidence they
+//          cited and asked whether it genuinely supports the statement.
+//   A hypothesis is "supported" only if it passes ALL THREE. Everything rejected
+//   is written to agent_runs.unsupported_claims.
+//
+//   Gates A1 and A2 are deterministic: no LLM can argue its way past either.
 //
 //   SCORE — each SURVIVING claim gets a confidence percentage. The number is
 //   computed HERE IN CODE, not emitted by the model:
@@ -62,17 +71,53 @@ export async function runVerifier(
   const t0 = Date.now();
   const evById = new Map(evidence.map((e) => [e.evidence_id, e]));
 
-  // ---- (A) deterministic gate ----------------------------------------------
+  // ---- (A1) deterministic CITATION gate -------------------------------------
   const deterministic = new Map<string, string | null>(); // hyp id -> failure reason (null = passed gate)
   for (const h of hypotheses) {
     if (h.citations.length === 0) {
-      deterministic.set(h.id, 'no citations — claim is ungrounded');
+      deterministic.set(h.id, '[deterministic] no citations — claim is ungrounded');
     } else if (!h.citations.every((c) => evById.has(c))) {
       const bad = h.citations.filter((c) => !evById.has(c));
-      deterministic.set(h.id, `citations do not resolve to evidence: ${bad.join(', ')}`);
+      deterministic.set(h.id, `[deterministic] citations do not resolve to evidence: ${bad.join(', ')}`);
     } else {
       deterministic.set(h.id, null);
     }
+  }
+
+  // ---- (A2) deterministic CONSISTENCY gate ----------------------------------
+  // Read the detectors behind the cited events ONCE, for every hypothesis that
+  // survived A1. This is the same query Stage 3b needs, so the result is hoisted
+  // and reused there rather than issued twice.
+  const gateOne = hypotheses.filter((h) => deterministic.get(h.id) === null);
+  const sigsByEvent = new Map<string, SignalRow[]>();
+  let signalsRead = false;
+  if (gateOne.length > 0) {
+    const citedEventIds = [
+      ...new Set(
+        gateOne.flatMap((h) => h.citations.flatMap((c) => evById.get(c)?.source_event_ids ?? [])),
+      ),
+    ];
+    if (citedEventIds.length > 0) {
+      const sigs = await getSignalsForEvents(citedEventIds);
+      signalsRead = true;
+      for (const s of sigs) {
+        const arr = sigsByEvent.get(s.event_id) ?? [];
+        arr.push(s);
+        sigsByEvent.set(s.event_id, arr);
+      }
+    }
+  }
+  for (const h of gateOne) {
+    const refs = [
+      ...new Set(
+        h.citations
+          .flatMap((c) => evById.get(c)?.source_event_ids ?? [])
+          .flatMap((id) => (sigsByEvent.get(id) ?? []).filter((s) => s.detector !== 'label'))
+          .map((s) => s.detector_ref),
+      ),
+    ];
+    const conflict = techniqueConflict(h.technique, refs);
+    if (conflict) deterministic.set(h.id, `[consistency] ${conflict}`);
   }
 
   const gatePassed = hypotheses.filter((h) => deterministic.get(h.id) === null);
@@ -107,7 +152,8 @@ export async function runVerifier(
   for (const h of hypotheses) {
     const detReason = deterministic.get(h.id);
     if (detReason) {
-      verdicts.push({ hypothesis_id: h.id, supported: false, reason: `[deterministic] ${detReason}` });
+      // detReason already carries its gate tag ([deterministic] / [consistency]).
+      verdicts.push({ hypothesis_id: h.id, supported: false, reason: detReason });
       rejected.push({ hypothesis: h, reason: detReason });
       continue;
     }
@@ -129,21 +175,8 @@ export async function runVerifier(
   // claim is capped at the annotation score and labelled as such.
   const assessment: AttackAssessment[] = [];
   if (supported.length > 0) {
-    const citedEventIds = [
-      ...new Set(
-        supported.flatMap((h) =>
-          h.citations.flatMap((c) => evById.get(c)?.source_event_ids ?? []),
-        ),
-      ),
-    ];
-    const sigs = await getSignalsForEvents(citedEventIds);
-    const sigsByEvent = new Map<string, typeof sigs>();
-    for (const s of sigs) {
-      const arr = sigsByEvent.get(s.event_id) ?? [];
-      arr.push(s);
-      sigsByEvent.set(s.event_id, arr);
-    }
-
+    // sigsByEvent was already populated by the A2 gate — same table, same events
+    // (supported is a subset of the gate-one set), so no second query is issued.
     for (const h of supported) {
       const eventIds = [
         ...new Set(h.citations.flatMap((c) => evById.get(c)?.source_event_ids ?? [])),
@@ -195,7 +228,7 @@ export async function runVerifier(
   await recordAgentRun({
     incident_id: incidentId,
     agent: 'verifier',
-    tools_used: supported.length > 0 ? ['getSignalsForEvents'] : [],
+    tools_used: signalsRead ? ['getSignalsForEvents'] : [],
     citations: supported.flatMap((h) => h.citations),
     output: { verdicts, supported: supported.map((h) => h.id), attack_assessment: assessment },
     status: rejected.length > 0 ? 'partial' : 'ok',
