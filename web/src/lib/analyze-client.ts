@@ -46,12 +46,44 @@ export type AnalyzeStats = {
   sourceFilename: string;
 };
 
+export type Standardization = {
+  source_columns: number;
+  source_column_names: string[];
+  canonical_mapping: Record<string, string | null>;
+  label_column_present: boolean;
+  rows_read: number;
+  rows_standardized: number;
+  rows_dropped_unparseable_timestamp: number;
+  incidents_discovered: number;
+  incidents_truncated: number;
+  attack_classes: {
+    attack_class: string;
+    annotated_flows: number;
+    corroborated_by_detector: number;
+    corroboration_pct: number;
+  }[];
+};
+
+export type AttackAssessment = {
+  hypothesis_id: string;
+  statement: string;
+  technique: string;
+  confidence_pct: number;
+  detector_component: number;
+  entailment_component: number;
+  basis: "behavioural" | "behavioural+annotation" | "annotation-only";
+  corroborated_by_detector: boolean;
+  top_detector: string | null;
+  cited_evidence: string[];
+};
+
 export type AnalyzeResponse = {
   batchId: string;
   jobId: string;
   incidents: Omit<JobIncident, "phase">[];
   alerts: AnalyzeAlert[];
   stats: AnalyzeStats;
+  standardization?: Standardization | null;
   eval?: {
     tp?: number;
     fp?: number;

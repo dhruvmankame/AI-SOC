@@ -37,6 +37,8 @@ from soccore import (
     NS, RULES, ATTACK_KB, TECH, FAMILY_PRIORITY, FAMILY_TECH, FAMILY_TITLE,
     parse_ts, open_rows, g, detect, build_aggregates,
     family_of, cluster_key, sev_band,
+    classify_attack_label, is_benign_label, label_rule_rows,
+    LABEL_SCORE, LABEL_FAMILY_PREFIX, HEADER_ALIASES,
 )
 
 csv.field_size_limit(1 << 24)
@@ -47,6 +49,9 @@ CAP_PER_INCIDENT = 80           # stored attack events per incident (agent reads
 ALERT_EVENT_CAP = 60            # alert.event_ids cap == getIncidentEvents default limit
 CAP_BENIGN = 300                # small benign context sample (display only; eval uses ALL flows)
 CAP_ENTITY_SET = 12             # capped distinct srcs listed as flood actors / beacon victims
+MAX_INCIDENTS = 12              # auto-investigation spends LLM quota per incident; a
+                                # many-class dataset is truncated to the top-N by risk and
+                                # the drop is reported (never silently).
 
 
 def fail(msg):
@@ -114,7 +119,7 @@ def _eval(cm):
             "note": "detectors evaluated on ALL flows; predicted-attack = >=1 behavioural signal"}
 
 
-def _build(inc, events, signals, batch_id, label, path, cm, has_label):
+def _build(inc, events, signals, batch_id, label, path, cm, has_label, std):
     """Turn the per-cluster accumulators into incidents + entities + alerts.
     `inc` may be empty (benign file) — then only the (benign) events carry over."""
     items = list(inc.values())
@@ -122,6 +127,13 @@ def _build(inc, events, signals, batch_id, label, path, cm, has_label):
         a["risk"] = round(min(96.0, 60 + 12 * math.log10(a["flow_count"] + 1)), 1)
     # order by risk desc so INC-...-NNN codes rank most-severe first; deterministic
     items.sort(key=lambda a: (-a["risk"], FAMILY_PRIORITY[a["family"]], str(a["key"])))
+    # Auto-investigation spends LLM quota per incident. A dataset with many
+    # attack classes is truncated to the highest-risk MAX_INCIDENTS, and the
+    # drop is REPORTED (never silent) so the UI can say what was not analysed.
+    std["incidents_discovered"] = len(items)
+    std["incidents_truncated"] = max(0, len(items) - MAX_INCIDENTS)
+    if std["incidents_truncated"]:
+        items = items[:MAX_INCIDENTS]
 
     bhex = batch_id.replace("-", "")[:6]        # per-batch discriminator: code is UNIQUE globally
     day = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -131,12 +143,22 @@ def _build(inc, events, signals, batch_id, label, path, cm, has_label):
         iid = str(uuid.uuid5(NS, f"{batch_id}:{fam}:{ckey}"))
         contribs = {k: round(v, 3) for k, v in a["contribs"].items()}
         eids = a["event_ids"][:ALERT_EVENT_CAP]
+        # How this incident is evidenced — carried through to the UI and to the
+        # verifier's Stage-3 confidence so an annotation-only finding is never
+        # presented as if an independent detector had confirmed it.
+        bflows = a.get("behavioural_flows", 0)
+        basis = ("behavioural" if bflows == a["flow_count"]
+                 else "annotation-only" if bflows == 0
+                 else "behavioural+annotation")
         incidents.append({
             "incident_id": iid, "code": f"INC-{day}-{bhex}-{n0:03d}",
             "title": FAMILY_TITLE[fam], "risk_score": a["risk"],
             "risk_factors": {"attack_flows": a["flow_count"],
                              "detector_confidence": max(contribs.values(), default=0.0),
-                             "asset_criticality": 0.7},
+                             "asset_criticality": 0.7,
+                             "behavioural_flows": bflows,
+                             "corroboration_pct": round(100.0 * bflows / a["flow_count"], 1) if a["flow_count"] else 0.0,
+                             "evidence_basis": basis},
             "mitre_techniques": [FAMILY_TECH[fam]], "summary": None, "family": fam,
         })
         seen = set()
@@ -156,6 +178,10 @@ def _build(inc, events, signals, batch_id, label, path, cm, has_label):
             _ent(ckey[0], "actor")
             for s in sorted(a["srcs"]):
                 _ent(s, "victim")
+        elif fam.startswith(LABEL_FAMILY_PREFIX):  # key=(dst,); srcs = attackers
+            _ent(ckey[0], "target")
+            for s in sorted(a["srcs"]):
+                _ent(s, "actor")
         # one deduplicated alert per incident (noisy-OR over contributing detectors)
         conf = 1.0
         for sc in contribs.values():
@@ -172,12 +198,20 @@ def _build(inc, events, signals, batch_id, label, path, cm, has_label):
         "batch": {"batch_id": batch_id, "label": label or os.path.basename(path),
                   "source_filename": os.path.basename(path), "event_count": len(events),
                   "incident_count": len(incidents), "status": "detected"},
+        "standardization": std,
         "incidents": incidents, "incident_entities": entities,
         "events": events, "signals": signals, "alerts": alerts,
-        "rules": [dict(rule_id=r[0], title=r[1], detector=r[2], mitre_tags=r[3], severity=r[4]) for r in RULES],
+        "rules": ([dict(rule_id=r[0], title=r[1], detector=r[2], mitre_tags=r[3], severity=r[4]) for r in RULES]
+                  + [dict(rule_id=r[0], title=r[1], detector=r[2], mitre_tags=r[3], severity=r[4]) for r in label_rule_rows()]),
         "attack_kb": [dict(technique_id=t[0], name=t[1], tactic=t[2], description=t[3]) for t in ATTACK_KB],
         "eval": _eval(cm) if has_label else None,
     }
+
+
+def _header_of(path):
+    """The raw header row, for the Stage-1 standardization report."""
+    with open(path, "r", encoding="latin-1", newline="") as fh:
+        return [h.strip() for h in next(csv.reader(fh))]
 
 
 def analyze(path, batch_id, label):
@@ -196,6 +230,23 @@ def analyze(path, batch_id, label):
              "Common header aliases are accepted. Missing canonical fields: " + ", ".join(missing))
     has_label = "Label" in idx
 
+    # ---- Stage 1: standardization report ------------------------------------
+    # What the ingestion layer actually did to this file: which of the source
+    # columns it recognised and bound to each canonical field. This is the
+    # deterministic "convert any dataset to a standard form" stage, surfaced so
+    # it is inspectable rather than implicit.
+    header = _header_of(path)
+    std = {
+        "source_columns": len(header),
+        "source_column_names": header[:40],
+        "canonical_mapping": {
+            c: (header[idx[c]] if c in idx and idx[c] < len(header) else None)
+            for c in ("Source IP", "Destination IP", "Destination Port",
+                      "Timestamp", "Protocol", "Label")
+        },
+        "label_column_present": has_label,
+    }
+
     # ---- pass 1: behavioural aggregates over ALL flows (shared with the seed)
     aggs = build_aggregates([(path, SCEN)])
 
@@ -205,6 +256,9 @@ def analyze(path, batch_id, label):
     stored_per_inc = Counter()
     cm = Counter()                 # eval confusion matrix (only used if has_label)
     benign_seen = benign_stored = 0
+    dropped_bad_ts = 0             # Stage-1 standardization report
+    label_flows = Counter()        # attack_class -> annotated flow count
+    corroborated_flows = Counter() # attack_class -> annotated flows a real detector ALSO caught
     btotal = aggs["benign"].get(SCEN, 0)
     bstride = max(1, btotal // CAP_BENIGN)       # spread the benign sample across the file
 
@@ -213,6 +267,8 @@ def analyze(path, batch_id, label):
     valid_ts_rows = 0
     for row in reader:
         rown += 1
+        if rown % 50000 == 0:
+            print(f"pass 2/2 (detect): {rown:,} rows", file=sys.stderr, flush=True)
         if len(row) < 4:
             continue
         src = g(row, idx, "Source IP"); dst = g(row, idx, "Destination IP")
@@ -220,19 +276,43 @@ def analyze(path, batch_id, label):
             continue
         dport = g(row, idx, "Destination Port")
         sigs = detect(row, idx, aggs, SCEN)
+        # EVAL INTEGRITY: `pred` is the BEHAVIOURAL verdict and is captured HERE,
+        # before the annotation-derived signal is appended below. If a label
+        # signal were counted as a prediction the confusion matrix would be
+        # scoring the label against itself and would report a meaningless
+        # perfect F1. The reported P/R/F1 therefore always measures the real
+        # detectors only.
         pred = len(sigs) > 0
 
         is_attack = None
+        raw_label = g(row, idx, "Label") if has_label else ""
         if has_label:
-            is_attack = g(row, idx, "Label").upper() != "BENIGN"
+            is_attack = not is_benign_label(raw_label)
             cm["tp" if (is_attack and pred) else "fn" if (is_attack and not pred)
                else "fp" if (not is_attack and pred) else "tn"] += 1
 
         ts = parse_ts(g(row, idx, "Timestamp"))
         if ts is None:
             # events.ts is NOT NULL — a flow with an unparseable timestamp cannot be stored.
+            dropped_bad_ts += 1
             continue
         valid_ts_rows += 1
+
+        # ---- Stage-1 attack-class bridge -----------------------------------
+        # A labelled attack the behavioural detectors cannot see (SQL injection,
+        # XSS, port scan, ...) still becomes a signal — flagged as an ANNOTATION
+        # so nothing downstream mistakes it for independent detection.
+        if has_label and is_attack:
+            lbl = classify_attack_label(raw_label)
+            if lbl is not None:
+                label_flows[lbl["attack_class"]] += 1
+                if pred:
+                    corroborated_flows[lbl["attack_class"]] += 1
+                sigs = sigs + [dict(
+                    detector="label", detector_ref=lbl["detector_ref"], score=LABEL_SCORE,
+                    reason=(f"dataset-annotated '{lbl['raw_label']}' -> {lbl['attack_class']} "
+                            f"({lbl['technique']}); annotation supplied by the dataset, "
+                            f"NOT independent behavioural detection"))]
 
         if not sigs:                             # benign / no-signal: strided context sample
             benign_seen += 1
@@ -248,8 +328,11 @@ def analyze(path, batch_id, label):
         acc = inc.get(owner)
         if acc is None:
             acc = inc[owner] = {"family": owner[0], "key": owner[1], "flow_count": 0,
+                                "behavioural_flows": 0,
                                 "top_score": 0.0, "contribs": {}, "srcs": set(), "event_ids": []}
         acc["flow_count"] += 1                   # TRUE (uncapped) attack-flow count -> risk
+        if pred:
+            acc["behavioural_flows"] += 1        # an independent detector saw this flow too
         for s in sigs:
             acc["contribs"][s["detector_ref"]] = max(acc["contribs"].get(s["detector_ref"], 0.0), s["score"])
             acc["top_score"] = max(acc["top_score"], s["score"])
@@ -267,7 +350,20 @@ def analyze(path, batch_id, label):
         fail("CSV schema was recognized, but no usable timestamped flow rows were found. "
              "Use CICIDS/CICFlowMeter-style timestamps, ISO-8601, or Unix epoch seconds/milliseconds.")
 
-    return _build(inc, events, signals, batch_id, label, path, cm, has_label)
+    # Finish the Stage-1 report with what the pass actually produced, including
+    # the corroboration rate per attack class: of the flows the dataset annotated
+    # as this attack, how many an INDEPENDENT behavioural detector also flagged.
+    std["rows_read"] = rown
+    std["rows_standardized"] = valid_ts_rows
+    std["rows_dropped_unparseable_timestamp"] = dropped_bad_ts
+    std["attack_classes"] = [
+        {"attack_class": cls,
+         "annotated_flows": n,
+         "corroborated_by_detector": corroborated_flows.get(cls, 0),
+         "corroboration_pct": round(100.0 * corroborated_flows.get(cls, 0) / n, 1) if n else 0.0}
+        for cls, n in sorted(label_flows.items(), key=lambda kv: -kv[1])
+    ]
+    return _build(inc, events, signals, batch_id, label, path, cm, has_label, std)
 
 
 def main():

@@ -22,9 +22,13 @@ import {
 } from "@/lib/analyze-client";
 import { setActiveBatchId } from "@/lib/active-batch";
 import {
+  fetchAgentRuns,
   fetchIncidents,
   fetchVerifierCounts,
+  latestRun,
+  type AttackAssessment,
   type IncidentRow,
+  type ReportOutput,
 } from "@/lib/live-api";
 import { SectionTitle, Severity } from "./layout";
 
@@ -40,8 +44,9 @@ export function Analyze() {
   const [uploadPct, setUploadPct] = useState(0);
   const [liveIncidents, setLiveIncidents] = useState<IncidentRow[]>([]);
   const [verifierCounts, setVerifierCounts] = useState<
-    Map<string, { supported: number; rejected: number }>
+    Map<string, { supported: number; rejected: number; assessment: AttackAssessment[] }>
   >(new Map());
+  const [reports, setReports] = useState<Map<string, ReportOutput>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function refreshLive(batchId: string) {
@@ -50,6 +55,18 @@ export function Analyze() {
       setLiveIncidents(incs);
       const counts = await fetchVerifierCounts(incs.map((i) => i.incident_id));
       setVerifierCounts(counts);
+      // Pull the full written report (narrative + actions) for anything that
+      // produced one, so the analyst sees it here without navigating away.
+      const done = incs.filter((i) => i.summary);
+      if (done.length > 0) {
+        const pairs = await Promise.all(
+          done.map(async (i) => {
+            const run = latestRun(await fetchAgentRuns(i.incident_id), "report-writer");
+            return [i.incident_id, (run?.output as ReportOutput | undefined) ?? null] as const;
+          }),
+        );
+        setReports(new Map(pairs.filter((p): p is readonly [string, ReportOutput] => !!p[1])));
+      }
     } catch {
       // During the short inserting stage the batch may not be visible yet.
     }
@@ -215,21 +232,20 @@ export function Analyze() {
         </section>
 
         <section className="panel-surface overflow-hidden xl:col-span-4">
-          <SectionTitle label="Investigation sequence" aside="Fast detection first · AI follows live" />
+          <SectionTitle label="Four-stage pipeline" aside="Deterministic ingest · evidence-grounded agents" />
           <div className="p-5">
             {[
-              { n: "01", label: "Upload", text: "Live byte-level upload progress" },
-              { n: "02", label: "Detect", text: "Rules + statistical detection" },
-              { n: "03", label: "Correlate", text: "Build independent incidents" },
-              { n: "04", label: "Verify", text: "Evidence-grounded Gemini workflow" },
-              { n: "05", label: "Report", text: "Verified report appears here" },
+              { n: "01", label: "Standardize", text: "Any flow CSV mapped to one canonical schema — deterministic, no LLM" },
+              { n: "02", label: "Identify", text: "Evidence grounded in cited event IDs, mapped to an ATT&CK technique" },
+              { n: "03", label: "Verify & score", text: "Fail-closed verifier rejects uncited claims, then scores the survivors" },
+              { n: "04", label: "Report", text: "Analyst report written from verified findings only" },
             ].map((s, i) => (
               <div key={s.n} className="relative flex gap-3 pb-5 last:pb-0">
                 <div className="relative flex flex-col items-center">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded border border-primary/25 bg-primary/10 font-mono text-[10px] text-primary">
                     {s.n}
                   </span>
-                  {i < 4 && <span className="mt-1 h-full w-px bg-border" />}
+                  {i < 3 && <span className="mt-1 h-full w-px bg-border" />}
                 </div>
                 <div className="pt-1">
                   <div className="text-xs font-medium">{s.label}</div>
@@ -279,6 +295,77 @@ export function Analyze() {
               </div>
             )}
           </section>
+
+          {response.standardization && (
+            <section className="panel-surface overflow-hidden">
+              <SectionTitle
+                label="Stage 1 · Standardization"
+                aside={`${response.standardization.source_columns} source columns mapped to the canonical schema`}
+              />
+              <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Rows read", response.standardization.rows_read.toLocaleString()],
+                  ["Rows standardized", response.standardization.rows_standardized.toLocaleString()],
+                  ["Dropped (bad timestamp)", response.standardization.rows_dropped_unparseable_timestamp.toLocaleString()],
+                  ["Attack column", response.standardization.label_column_present ? "present" : "absent"],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-panel p-5">
+                    <div className="font-mono text-[10px] uppercase text-faint">{label}</div>
+                    <div className="mt-2 font-display text-xl font-semibold">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-border p-5">
+                <div className="mb-2 font-mono text-[10px] uppercase text-faint">Canonical field mapping</div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(response.standardization.canonical_mapping).map(([canonical, source]) => (
+                    <span
+                      key={canonical}
+                      className={`rounded border px-2 py-1 font-mono text-[10px] ${
+                        source ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-panel2/40 text-faint"
+                      }`}
+                    >
+                      {canonical} {source ? `← ${source}` : "← (not found)"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {response.standardization.attack_classes.length > 0 && (
+                <div className="border-t border-border p-5">
+                  <div className="mb-3 font-mono text-[10px] uppercase text-faint">
+                    Attack classes found · corroboration by independent detectors
+                  </div>
+                  <div className="space-y-2">
+                    {response.standardization.attack_classes.map((c) => (
+                      <div key={c.attack_class} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-panel2/30 px-3 py-2">
+                        <span className="text-xs font-medium">{c.attack_class}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {c.annotated_flows.toLocaleString()} flows · {c.corroboration_pct}% corroborated
+                          {c.corroboration_pct === 0 && " (dataset annotation only)"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                    Corroboration = share of annotated flows an independent behavioural detector also flagged.
+                    A 0% class is carried forward on the dataset&apos;s own label, not on independent detection —
+                    the verifier scores and labels it as such.
+                  </p>
+                </div>
+              )}
+
+              {response.standardization.incidents_truncated > 0 && (
+                <div className="border-t border-border p-5 text-xs text-high">
+                  {response.standardization.incidents_discovered} incidents were discovered;
+                  only the {response.standardization.incidents_discovered - response.standardization.incidents_truncated} highest-risk
+                  were kept for AI investigation to stay inside the LLM quota.
+                  {" "}{response.standardization.incidents_truncated} were not investigated.
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="panel-surface overflow-hidden">
             <SectionTitle
@@ -372,12 +459,65 @@ export function Analyze() {
                         </div>
                       )}
 
+                      {counts && counts.assessment.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <div className="font-mono text-[10px] uppercase text-faint">
+                            Stage 3 · attack confidence
+                          </div>
+                          {counts.assessment.map((a) => (
+                            <div key={a.hypothesis_id} className="rounded border border-border bg-panel2/30 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-mono text-[10px] text-primary">{a.technique}</span>
+                                <span className="font-mono text-sm text-foreground">{a.confidence_pct}%</span>
+                              </div>
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-panel2">
+                                <div
+                                  className={`h-full ${a.corroborated_by_detector ? "bg-primary" : "bg-high"}`}
+                                  style={{ width: `${Math.min(100, a.confidence_pct)}%` }}
+                                />
+                              </div>
+                              <div className="mt-2 font-mono text-[10px] text-muted-foreground">
+                                {a.basis}
+                                {a.corroborated_by_detector
+                                  ? ` · detector ${a.top_detector} (${a.detector_component}) × entailment ${a.entailment_component}`
+                                  : " · dataset label only, no independent detector confirmed this"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {liveRow?.summary && (
                         <div className="mt-4 rounded border border-primary/20 bg-primary/5 p-4">
                           <div className="mb-1 font-mono text-[10px] uppercase text-primary">
                             Verified report
                           </div>
                           <p className="text-xs leading-relaxed text-foreground">{liveRow.summary}</p>
+                          {reports.get(inc.incidentId)?.narrative && (
+                            <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                              {reports.get(inc.incidentId)!.narrative}
+                            </p>
+                          )}
+                          {(reports.get(inc.incidentId)?.recommended_actions?.length ?? 0) > 0 && (
+                            <>
+                              <div className="mb-1 mt-3 font-mono text-[10px] uppercase text-primary">
+                                Recommended actions (simulation-only)
+                              </div>
+                              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                                {reports.get(inc.incidentId)!.recommended_actions!.map((a, i) => (
+                                  <li key={i}>{a}</li>
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {phase === "done_no_report" && (
+                        <div className="mt-4 rounded border border-high/30 bg-high/10 p-4 text-xs leading-relaxed text-foreground">
+                          <span className="font-medium">No report written.</span> Every hypothesis
+                          failed verification, so the pipeline refused to assert an unsupported
+                          narrative. The rejected claims and reasons are on the incident record.
                         </div>
                       )}
 

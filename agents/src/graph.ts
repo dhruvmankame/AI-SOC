@@ -5,7 +5,7 @@ import { runEvidenceCollector } from './agents/evidence.js';
 import { runHypothesisAgent } from './agents/hypothesis.js';
 import { runVerifier } from './agents/verifier.js';
 import { runReportWriter } from './agents/report.js';
-import type { EvidenceItem, Hypothesis, Verdict, EventRow } from './state.js';
+import type { EvidenceItem, Hypothesis, Verdict, EventRow, AttackAssessment } from './state.js';
 
 // ============================================================================
 // Orchestration graph (blueprint §8). The controller is DETERMINISTIC code:
@@ -26,6 +26,7 @@ const SocState = Annotation.Root({
   verdicts: Annotation<Verdict[]>({ reducer: (_, b) => b, default: () => [] }),
   supported: Annotation<Hypothesis[]>({ reducer: (_, b) => b, default: () => [] }),
   rejected: Annotation<{ hypothesis: Hypothesis; reason: string }[]>({ reducer: (_, b) => b, default: () => [] }),
+  assessment: Annotation<AttackAssessment[]>({ reducer: (_, b) => b, default: () => [] }),
   report: Annotation<{ summary: string; narrative: string; recommended_actions: string[] } | null>({
     reducer: (_, b) => b,
     default: () => null,
@@ -50,13 +51,13 @@ const graph = new StateGraph(SocState)
     return { hypotheses: r.hypotheses, tokensUsed: r.tokens };
   })
   .addNode('verify', async (s: SocStateT) => {
-    if (s.hypotheses.length === 0) return { supported: [], rejected: [], verdicts: [] };
+    if (s.hypotheses.length === 0) return { supported: [], rejected: [], verdicts: [], assessment: [] };
     const r = await runVerifier(s.incidentId, s.hypotheses, s.evidence);
-    return { verdicts: r.verdicts, supported: r.supported, rejected: r.rejected, tokensUsed: r.tokens };
+    return { verdicts: r.verdicts, supported: r.supported, rejected: r.rejected, assessment: r.assessment, tokensUsed: r.tokens };
   })
   .addNode('write_report', async (s: SocStateT) => {
     if (s.supported.length === 0) return {};
-    const r = await runReportWriter(s.incidentId, s.supported, s.evidence, s.eventIndex);
+    const r = await runReportWriter(s.incidentId, s.supported, s.evidence, s.eventIndex, s.assessment);
     return { report: { summary: r.summary, narrative: r.narrative, recommended_actions: r.recommended_actions }, tokensUsed: r.tokens };
   })
   .addEdge(START, 'collect')

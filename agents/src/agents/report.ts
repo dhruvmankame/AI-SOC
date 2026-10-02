@@ -1,25 +1,31 @@
 import { reason } from '../llm.js';
 import { writeReport, insertTimeline, recordAgentRun } from '../tools.js';
 import { ReportOut } from '../state.js';
-import type { EvidenceItem, Hypothesis, EventRow } from '../state.js';
+import type { EvidenceItem, Hypothesis, EventRow, AttackAssessment } from '../state.js';
 
 // ============================================================================
 // Agent 4 — REPORT WRITER
 // Builds the analyst-facing incident report from VERIFIED findings ONLY. It
 // never sees the rejected hypotheses, so it structurally cannot narrate an
-// unsupported claim. Writes incidents.summary, the deduped MITRE technique set,
-// and a chronological timeline anchored to the cited events. Recommended
-// actions are simulation-only.
+// unsupported claim. It is also handed Stage 3's confidence assessment and must
+// report each claim's percentage AND its basis — so an annotation-only finding
+// reads as "the dataset labelled this" rather than "we detected this". Writes
+// incidents.summary, the deduped MITRE technique set, and a chronological
+// timeline anchored to the cited events. Recommended actions are
+// simulation-only.
 // ============================================================================
 
 const SYSTEM =
   'You are the Report Writer in a SOC pipeline. You are given ONLY the VERIFIED ' +
-  'hypotheses and the evidence they cite. Write a concise analyst report. RULES: ' +
+  'hypotheses, the evidence they cite, and a confidence assessment for each. RULES: ' +
   '(1) assert nothing that is not backed by the supplied evidence; (2) put an ' +
-  'inline [EV-x] citation next to every factual claim in the narrative; (3) the ' +
-  'summary is 2-4 sentences for a SOC lead; (4) recommended actions are ' +
-  'simulation-only steps an analyst would approve, never auto-executed. If the ' +
-  'verified evidence is thin, say so plainly rather than inflating confidence.';
+  'inline [EV-x] citation next to every factual claim in the narrative; (3) state ' +
+  'each attack\'s confidence percentage, and when its basis is "annotation-only" say ' +
+  'plainly that it rests on the dataset\'s own label and was NOT confirmed by an ' +
+  'independent detector; (4) the summary is 2-4 sentences for a SOC lead; ' +
+  '(5) recommended actions are simulation-only steps an analyst would approve, never ' +
+  'auto-executed. If the verified evidence is thin, say so plainly rather than ' +
+  'inflating confidence.';
 
 export interface ReportResult {
   summary: string;
@@ -33,17 +39,24 @@ export async function runReportWriter(
   supported: Hypothesis[],
   evidence: EvidenceItem[],
   eventIndex: Map<string, EventRow>,
+  assessment: AttackAssessment[] = [],
 ): Promise<ReportResult> {
   const t0 = Date.now();
 
   const citedEvIds = new Set(supported.flatMap((h) => h.citations));
   const usedEvidence = evidence.filter((e) => citedEvIds.has(e.evidence_id));
+  const scoreById = new Map(assessment.map((a) => [a.hypothesis_id, a]));
 
   const data = [
     'VERIFIED HYPOTHESES:',
-    ...supported.map(
-      (h) => `  ${h.id} [${h.technique}] (conf ${h.confidence}): ${h.statement}\n      cites: ${h.citations.join(', ')}`,
-    ),
+    ...supported.map((h) => {
+      const a = scoreById.get(h.id);
+      const score = a
+        ? `\n      confidence: ${a.confidence_pct}% (basis: ${a.basis}` +
+          `${a.corroborated_by_detector ? `, corroborated by detector ${a.top_detector}` : ', NOT corroborated by any independent detector'})`
+        : '';
+      return `  ${h.id} [${h.technique}] (conf ${h.confidence}): ${h.statement}\n      cites: ${h.citations.join(', ')}${score}`;
+    }),
     '',
     'EVIDENCE:',
     ...usedEvidence.map((e) => `  ${e.evidence_id}: ${e.fact}`),
@@ -76,7 +89,7 @@ export async function runReportWriter(
     agent: 'report-writer',
     tools_used: ['writeReport', 'insertTimeline'],
     citations: supported.flatMap((h) => h.citations),
-    output: parsed,
+    output: { ...parsed, attack_assessment: assessment },
     status: 'ok',
     unsupported_claims: [],
     latency_ms: Date.now() - t0,

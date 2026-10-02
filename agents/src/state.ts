@@ -50,6 +50,30 @@ export interface Verdict {
   reason: string;
 }
 
+/**
+ * Stage-3 output: a confidence percentage per verified attack claim.
+ *
+ * The number is NOT produced by the LLM alone. It is computed in code as
+ *   detector_component x entailment_component
+ * where detector_component is the strongest REAL detector score on the events
+ * backing the cited evidence (read from the signals table) and
+ * entailment_component is how completely the verifier judged the cited evidence
+ * to establish the claim. `basis` records which kind of evidence produced it, so
+ * an annotation-only finding can never be displayed as a detector-confirmed one.
+ */
+export interface AttackAssessment {
+  hypothesis_id: string;
+  statement: string;
+  technique: string;
+  confidence_pct: number;
+  detector_component: number;
+  entailment_component: number;
+  basis: 'behavioural' | 'behavioural+annotation' | 'annotation-only';
+  corroborated_by_detector: boolean;
+  top_detector: string | null;
+  cited_evidence: string[];
+}
+
 export interface Budget {
   maxSteps: number;
   maxTokens: number;
@@ -97,6 +121,15 @@ export const VerifierOut = z.object({
     z.object({
       hypothesis_id: z.string(),
       supported: z.boolean().describe('true only if the cited evidence genuinely supports the statement.'),
+      evidence_strength: z
+        .number()
+        .min(0)
+        .max(1)
+        .describe(
+          'How completely the CITED EVIDENCE ALONE establishes the statement: 1.0 = fully established, ' +
+            '0.6 = mostly but with a gap, 0.3 = only weakly suggested, 0.0 = not established. ' +
+            'Judge only the evidence text shown, never prior knowledge.',
+        ),
       reason: z.string().describe('Why it is supported or rejected. Name the failing citation if rejected.'),
     }),
   ),

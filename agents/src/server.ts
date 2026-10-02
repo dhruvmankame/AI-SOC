@@ -49,6 +49,18 @@ const UPLOAD_DIR = resolve(tmpdir(), 'ai-soc-uploads');
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
+// Console logging. The backend terminal is the operator's view of the pipeline,
+// so every stage announces itself: upload -> standardize -> detect -> persist,
+// then, per incident, the four agents in order with their results. Python's
+// stderr is streamed through live so a long parse shows progress instead of
+// looking hung.
+// ---------------------------------------------------------------------------
+const hhmmss = () => new Date().toISOString().slice(11, 19);
+const log = (stage: string, msg: string) => console.log(`[${hhmmss()}] ${stage.padEnd(16)}${msg}`);
+const logErr = (stage: string, msg: string) => console.error(`[${hhmmss()}] ${stage.padEnd(16)}${msg}`);
+const rule = (msg: string) => console.log(`\n${'='.repeat(78)}\n  ${msg}\n${'='.repeat(78)}`);
+
+// ---------------------------------------------------------------------------
 // Upload handling: .csv only, size-capped, random on-disk filename (so a
 // crafted originalname can never traverse paths). The file is deleted after
 // analyze.py has read it.
@@ -85,6 +97,12 @@ interface Job {
   incidents: IncidentJob[];
 }
 const jobs = new Map<string, Job>();
+// Single-flight. The Gemini throttle in llm.ts is process-GLOBAL, so two
+// concurrent analyses don't actually run in parallel — their LLM calls queue
+// behind each other and their progress interleaves, which makes the backend log
+// unreadable and the UI misleading. One analysis at a time; a second upload gets
+// a clean 409 telling it to wait.
+let activeJobId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Shape emitted by ml/analyze.py (JSON on stdout). Loose: only the fields we
@@ -93,6 +111,18 @@ const jobs = new Map<string, Job>();
 interface AnalyzeResult {
   error?: string;
   batch: { batch_id: string; label: string; source_filename: string; event_count: number; incident_count: number; status: string };
+  standardization?: {
+    source_columns: number;
+    source_column_names: string[];
+    canonical_mapping: Record<string, string | null>;
+    label_column_present: boolean;
+    rows_read: number;
+    rows_standardized: number;
+    rows_dropped_unparseable_timestamp: number;
+    incidents_discovered: number;
+    incidents_truncated: number;
+    attack_classes: { attack_class: string; annotated_flows: number; corroborated_by_detector: number; corroboration_pct: number }[];
+  };
   incidents: Array<{ incident_id: string; code: string; title: string; risk_score: number; risk_factors: unknown; mitre_techniques: string[]; summary: string | null }>;
   incident_entities: Array<{ incident_id: string; entity_type: string; entity_value: string; role: string }>;
   events: Array<Record<string, unknown>>;
@@ -107,16 +137,39 @@ interface AnalyzeResult {
 // string) — the uploaded path/label are data, not shell tokens.
 function runAnalyze(csvPath: string, batchId: string, label: string): Promise<AnalyzeResult> {
   return new Promise((resolvePromise, reject) => {
+    const started = Date.now();
+    log('STAGE 1', `standardizing "${label}" -> ${ANALYZE_PY}`);
     const py = spawn('python3', [ANALYZE_PY, csvPath, '--batch', batchId, '--label', label], { cwd: ML_DIR });
     let out = '';
     let err = '';
     py.stdout.on('data', (d) => { out += d.toString(); });
-    py.stderr.on('data', (d) => { err += d.toString(); });
+    // Stream python's progress lines through live so a large file visibly
+    // advances instead of looking hung.
+    py.stderr.on('data', (d) => {
+      const chunk = d.toString();
+      err += chunk;
+      for (const line of chunk.split('\n')) {
+        if (line.trim()) log('STAGE 1', `  ${line.trim()}`);
+      }
+    });
     py.on('error', (e) => reject(new Error(`failed to spawn python3: ${e.message}`)));
     py.on('close', (code) => {
       if (code !== 0) return reject(new Error(`analyze.py exited ${code}: ${err.slice(0, 500)}`));
       try {
-        resolvePromise(JSON.parse(out) as AnalyzeResult);
+        const parsed = JSON.parse(out) as AnalyzeResult;
+        const s = parsed.standardization;
+        log('STAGE 1', `done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+        if (s) {
+          log('STAGE 1', `rows ${s.rows_read} read / ${s.rows_standardized} standardized / ${s.rows_dropped_unparseable_timestamp} dropped`);
+          log('STAGE 1', `attack column: ${s.label_column_present ? 'present' : 'absent'}`);
+          for (const c of s.attack_classes ?? []) {
+            log('STAGE 1', `  class "${c.attack_class}": ${c.annotated_flows} flows, ${c.corroboration_pct}% corroborated by a detector`);
+          }
+          if (s.incidents_truncated > 0) {
+            log('STAGE 1', `NOTE ${s.incidents_discovered} incidents found; investigating top ${s.incidents_discovered - s.incidents_truncated} (quota cap)`);
+          }
+        }
+        resolvePromise(parsed);
       } catch (e) {
         reject(new Error(`unparseable analyze.py output: ${(e as Error).message}; stderr: ${err.slice(0, 300)}`));
       }
@@ -264,7 +317,10 @@ async function runInvestigations(job: Job): Promise<void> {
   try {
     await q('update ingest_batches set status = $1 where batch_id = $2', ['investigating', job.batchId]);
   } catch { /* best-effort */ }
+  rule(`INVESTIGATION PLANE — ${job.incidents.length} incident(s) queued for the 4-agent pipeline`);
+  let n = 0;
   for (const ij of job.incidents) {
+    n++;
     // Skip anything that already carries a report (re-run safety; a fresh
     // upload has none). A written report sets incidents.summary.
     try {
@@ -272,25 +328,45 @@ async function runInvestigations(job: Job): Promise<void> {
       if (rows[0]?.summary) {
         ij.phase = 'done_with_report';
         ij.finishedAt = Date.now();
+        log('SKIP', `${ij.code} already has a report`);
         continue;
       }
     } catch { /* fall through and investigate */ }
 
+    rule(`[${n}/${job.incidents.length}] ${ij.code} — ${ij.attackType} (risk ${Math.round(ij.risk)})`);
     ij.phase = 'collecting';
     ij.startedAt = Date.now();
+    const t0 = Date.now();
+    // Every line carries the incident code: with one analysis at a time this is
+    // merely helpful, but it keeps the log unambiguous no matter what else runs.
+    const ilog = (stage: string, msg: string) => log(stage, `${ij.code}  ${msg}`);
+    ilog('AGENT 1/4', 'Evidence Collector — incident-scoped events + signals, grounding every fact to event_ids');
     try {
       await investigateStreaming(ij.incidentId, (p: InvestigateProgress) => {
         ij.phase = p.phase;
+        if (p.phase === 'hypothesizing') ilog('AGENT 2/4', 'Hypothesis & ATT&CK — reasoning over cited evidence only');
+        else if (p.phase === 'verifying') ilog('AGENT 3/4', 'Verifier — citation gate + entailment, then confidence scoring');
+        else if (p.phase === 'reporting') ilog('AGENT 4/4', 'Report Writer — verified findings only');
+        else if (p.phase === 'done_with_report') {
+          ilog('RESULT', `VERIFIED REPORT written — ${p.supported} supported / ${p.rejected} rejected (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+        } else if (p.phase === 'done_no_report') {
+          ilog('RESULT', `NO REPORT — all ${p.rejected} claim(s) rejected by the verifier; the pipeline refused to assert them (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+        }
         if (p.phase === 'done_with_report' || p.phase === 'done_no_report') ij.finishedAt = Date.now();
       });
     } catch (err) {
       ij.phase = 'error';
       ij.error = llmErrorMessage(err);
       ij.finishedAt = Date.now();
+      logErr('ERROR', `${ij.code}  ${ij.error}`);
       // continue: one incident failing must not abort the batch
     }
   }
   job.status = 'complete';
+  const ok = job.incidents.filter((i) => i.phase === 'done_with_report').length;
+  const none = job.incidents.filter((i) => i.phase === 'done_no_report').length;
+  const bad = job.incidents.filter((i) => i.phase === 'error').length;
+  rule(`BATCH COMPLETE — ${ok} report(s) written, ${none} fully-rejected, ${bad} error(s)`);
   try {
     await q('update ingest_batches set status = $1 where batch_id = $2', ['complete', job.batchId]);
   } catch { /* best-effort */ }
@@ -304,6 +380,17 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // The heavy lifting for POST /api/analyze, after multer has stored the file.
 async function handleAnalyze(req: express.Request, res: express.Response): Promise<void> {
+  // Single-flight: refuse a second analysis while one is still running.
+  if (activeJobId && jobs.get(activeJobId)?.status !== 'complete') {
+    if (req.file?.path) await fsp.unlink(req.file.path).catch(() => {});
+    const running = jobs.get(activeJobId);
+    logErr('REJECTED', `upload refused — analysis ${activeJobId.slice(0, 8)} is still ${running?.status}`);
+    res.status(409).json({
+      error: 'An analysis is already running. Wait for it to finish before uploading another dataset.',
+      activeJobId,
+    });
+    return;
+  }
   if (!req.file) {
     res.status(400).json({ error: 'no file uploaded (multipart field "file")' });
     return;
@@ -314,12 +401,20 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
   const jobId = randomUUID();
   const filePath = req.file.path;
   const label = req.file.originalname || 'upload.csv';
+  activeJobId = jobId;                       // claim the slot before any await
+  rule(`UPLOAD RECEIVED — ${label} (${(req.file.size / 1048576).toFixed(1)} MB)  batch ${batchId.slice(0, 8)}`);
 
   try {
     const data = await runAnalyze(filePath, batchId, label);
     if (data.error) {
+      activeJobId = null;
+      logErr('STAGE 1', `rejected: ${data.error}`);
       res.status(400).json({ error: data.error });
       return;
+    }
+    log('STAGE 2', `detection: ${data.incidents.length} incident(s), ${data.alerts.length} alert(s), ${data.signals.length} signal(s)`);
+    for (const i of data.incidents) {
+      log('STAGE 2', `  ${i.code} ${i.title} [${(i.mitre_techniques ?? []).join(',')}] risk ${i.risk_score}`);
     }
 
     const kbName = new Map(data.attack_kb.map((k) => [k.technique_id, k.name]));
@@ -333,7 +428,10 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
         code: i.code,
         title: i.title,
         risk: i.risk_score,
-        attackType: kbName.get(i.mitre_techniques?.[0]) ?? i.title,
+        // The incident title is the specific attack class ("SQL Injection",
+        // "Cross-Site Scripting"); the KB name is the broader technique
+        // ("Exploit Public-Facing Application"). Show the specific one.
+        attackType: i.title || kbName.get(i.mitre_techniques?.[0]) || 'Unknown',
         phase: 'queued' as IncidentPhase,
       })),
     };
@@ -350,6 +448,7 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
         processingMs: Date.now() - requestStarted,
         sourceFilename: data.batch.source_filename,
       },
+      standardization: data.standardization ?? null,
       incidents: job.incidents.map((i) => ({
         incidentId: i.incidentId,
         code: i.code,
@@ -371,7 +470,9 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
 
     void (async () => {
       try {
+        log('PERSIST', `writing batch to Postgres (${data.events.length} events, ${data.signals.length} signals)…`);
         await insertBatch(batchId, data);
+        log('PERSIST', 'batch committed');
 
         if (job.incidents.length === 0) {
           job.status = 'complete';
@@ -394,8 +495,9 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
         }
         job.status = 'complete';
       }
-    })();
+    })().finally(() => { if (activeJobId === jobId) activeJobId = null; });
   } catch (err) {
+    activeJobId = null;
     console.error('[analyze] error', err);
     if (!res.headersSent) {
       res.status(500).json({ error: String((err as Error)?.message ?? 'analyze failed') });

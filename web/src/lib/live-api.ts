@@ -287,14 +287,27 @@ export async function fetchAttackKb(): Promise<Map<string, AttackKbRow>> {
   return new Map(data.map((item) => [item.technique_id, item]));
 }
 
+export interface AttackAssessment {
+  hypothesis_id: string;
+  statement: string;
+  technique: string;
+  confidence_pct: number;
+  detector_component: number;
+  entailment_component: number;
+  basis: "behavioural" | "behavioural+annotation" | "annotation-only";
+  corroborated_by_detector: boolean;
+  top_detector: string | null;
+  cited_evidence: string[];
+}
+
 export async function fetchVerifierCounts(
   incidentIds: string[],
-): Promise<Map<string, { supported: number; rejected: number }>> {
+): Promise<Map<string, { supported: number; rejected: number; assessment: AttackAssessment[] }>> {
   if (incidentIds.length === 0) return new Map();
   const wanted = new Set(incidentIds);
   const runs = await rows<{
     incident_id: string;
-    output: { verdicts?: VerifierVerdict[] } | null;
+    output: { verdicts?: VerifierVerdict[]; attack_assessment?: AttackAssessment[] } | null;
     unsupported_claims: RejectedClaim[] | null;
     created_at: string;
   }>(
@@ -303,13 +316,14 @@ export async function fetchVerifierCounts(
     { agent: "eq.verifier" },
     "created_at.desc",
   );
-  const out = new Map<string, { supported: number; rejected: number }>();
+  const out = new Map<string, { supported: number; rejected: number; assessment: AttackAssessment[] }>();
   for (const run of runs) {
     if (!wanted.has(run.incident_id) || out.has(run.incident_id)) continue;
     const verdicts = Array.isArray(run.output?.verdicts) ? run.output!.verdicts! : [];
     out.set(run.incident_id, {
       supported: verdicts.filter((v) => v.supported).length,
       rejected: Array.isArray(run.unsupported_claims) ? run.unsupported_claims.length : 0,
+      assessment: Array.isArray(run.output?.attack_assessment) ? run.output!.attack_assessment! : [],
     });
   }
   return out;

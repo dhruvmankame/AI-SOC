@@ -113,10 +113,10 @@ export function Shell({ title, description, children, action }: { title: string;
         <div className="flex flex-wrap items-center gap-3">{action}
           <label className="hidden items-center gap-2 rounded-md border border-border bg-panel px-2.5 py-1.5 sm:flex">
             <span className="font-mono text-[9px] uppercase text-faint">Dataset</span>
-            <select value={current} onChange={(e)=>chooseDataset(e.target.value)} className="max-w-[220px] bg-transparent text-xs text-foreground outline-none" aria-label="Current dataset">
-              <option value="seed">CICIDS Seed</option>
-              {!knownCurrent && current !== "seed" && <option value={current}>Current upload</option>}
-              {batches.map((batch)=><option key={batch.batch_id} value={batch.batch_id}>{batch.label || batch.source_filename || batch.batch_id.slice(0,8)}</option>)}
+            <select value={current} onChange={(e)=>chooseDataset(e.target.value)} className="max-w-[220px] bg-transparent text-xs text-foreground outline-none [&>option]:bg-panel [&>option]:text-foreground" aria-label="Current dataset">
+              <option value="seed" className="bg-panel text-foreground">CICIDS Seed</option>
+              {!knownCurrent && current !== "seed" && <option value={current} className="bg-panel text-foreground">Current upload</option>}
+              {batches.map((batch)=><option key={batch.batch_id} value={batch.batch_id} className="bg-panel text-foreground">{batch.label || batch.source_filename || batch.batch_id.slice(0,8)}</option>)}
             </select>
           </label>
           <Link to="/analyze"><Button size="sm" className="gap-2"><UploadCloud className="size-4"/><span className="hidden sm:inline">Analyze CSV</span><span className="sm:hidden">Analyze</span></Button></Link>
