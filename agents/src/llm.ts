@@ -85,7 +85,7 @@ export async function reason<T extends z.ZodTypeAny>(opts: {
       const meta = res?.raw?.usage_metadata ?? {};
       const tokens =
         meta.total_tokens ?? (meta.input_tokens ?? 0) + (meta.output_tokens ?? 0);
-      return { parsed: res.parsed as z.infer<T>, tokens };
+      return { parsed: opts.schema.parse(res.parsed), tokens };
     } catch (err) {
       const kind = classifyLLMError(err);
       // Overload/quota won't clear by retrying inside one run — surface a clear,

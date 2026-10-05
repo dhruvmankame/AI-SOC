@@ -29,6 +29,9 @@ import { tmpdir } from 'node:os';
 import type { PoolClient } from 'pg';
 import { pool, q } from './db.js';
 import { investigateStreaming, type InvestigateProgress } from './graph.js';
+import { loadWorkflow, reportContext, AGENTS } from './workflow.js';
+import { runReportWriter } from './agents/report.js';
+import { recordAgentRun } from './tools.js';
 import { classifyLLMError } from './llm.js';
 
 // ---------------------------------------------------------------------------
@@ -85,7 +88,7 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 type IncidentPhase =
   | 'queued' | 'collecting' | 'hypothesizing' | 'verifying' | 'reporting'
-  | 'done_with_report' | 'done_no_report' | 'error';
+  | 'ready_for_report' | 'done_with_report' | 'done_no_report' | 'error';
 
 interface IncidentJob {
   incidentId: string; code: string; title: string; attackType: string; risk: number;
@@ -95,6 +98,7 @@ interface Job {
   jobId: string; batchId: string; createdAt: number;
   status: 'parsing' | 'inserting' | 'investigating' | 'complete';
   incidents: IncidentJob[];
+  error?: string;
 }
 const jobs = new Map<string, Job>();
 // Single-flight. The Gemini throttle in llm.ts is process-GLOBAL, so two
@@ -347,14 +351,16 @@ async function runInvestigations(job: Job): Promise<void> {
         if (p.phase === 'hypothesizing') ilog('AGENT 2/4', 'Hypothesis & ATT&CK — reasoning over cited evidence only');
         else if (p.phase === 'verifying') ilog('AGENT 3/4', 'Verifier — citation gate + entailment, then confidence scoring');
         else if (p.phase === 'reporting') ilog('AGENT 4/4', 'Report Writer — verified findings only');
+        else if (p.phase === 'ready_for_report') ilog('READY', `${p.supported} verified finding(s) — waiting for Generate report`);
         else if (p.phase === 'done_with_report') {
           ilog('RESULT', `VERIFIED REPORT written — ${p.supported} supported / ${p.rejected} rejected (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         } else if (p.phase === 'done_no_report') {
-          ilog('RESULT', `NO REPORT — all ${p.rejected} claim(s) rejected by the verifier; the pipeline refused to assert them (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+          ilog('RESULT', `NO REPORT — ${p.supported} supported / ${p.rejected} rejected; see agent audit for skipped stages (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
         }
-        if (p.phase === 'done_with_report' || p.phase === 'done_no_report') ij.finishedAt = Date.now();
-      });
+        if (p.phase === 'ready_for_report' || p.phase === 'done_with_report' || p.phase === 'done_no_report') ij.finishedAt = Date.now();
+      }, false);
     } catch (err) {
+      await recordFailure(ij.incidentId, ij.phase, err);
       ij.phase = 'error';
       ij.error = llmErrorMessage(err);
       ij.finishedAt = Date.now();
@@ -365,8 +371,9 @@ async function runInvestigations(job: Job): Promise<void> {
   job.status = 'complete';
   const ok = job.incidents.filter((i) => i.phase === 'done_with_report').length;
   const none = job.incidents.filter((i) => i.phase === 'done_no_report').length;
+  const ready = job.incidents.filter((i) => i.phase === 'ready_for_report').length;
   const bad = job.incidents.filter((i) => i.phase === 'error').length;
-  rule(`BATCH COMPLETE — ${ok} report(s) written, ${none} fully-rejected, ${bad} error(s)`);
+  rule(`BATCH COMPLETE — ${ok} report(s) written, ${ready} ready for report, ${none} without report, ${bad} error(s)`);
   try {
     await q('update ingest_batches set status = $1 where batch_id = $2', ['complete', job.batchId]);
   } catch { /* best-effort */ }
@@ -412,6 +419,9 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
       res.status(400).json({ error: data.error });
       return;
     }
+    // The random temp basename is an implementation detail; retain the user's
+    // filename in the batch registry and response.
+    data.batch.source_filename = label;
     log('STAGE 2', `detection: ${data.incidents.length} incident(s), ${data.alerts.length} alert(s), ${data.signals.length} signal(s)`);
     for (const i of data.incidents) {
       log('STAGE 2', `  ${i.code} ${i.title} [${(i.mitre_techniques ?? []).join(',')}] risk ${i.risk_score}`);
@@ -485,6 +495,7 @@ async function handleAnalyze(req: express.Request, res: express.Response): Promi
         await runInvestigations(job);
       } catch (err) {
         const message = String((err as Error)?.message ?? err).slice(0, 200);
+        job.error = message;
         console.error('[background-analysis] error', err);
         for (const incident of job.incidents) {
           if (incident.phase === 'queued') {
@@ -528,6 +539,73 @@ app.get('/api/jobs/:jobId', (req, res) => {
   }
   res.json(job);
 });
+
+const phaseAgent: Record<string, string> = { collecting: AGENTS[0], hypothesizing: AGENTS[1], verifying: AGENTS[2], reporting: AGENTS[3] };
+async function recordFailure(id: string, phase: string, err: unknown) {
+  const agent = phaseAgent[phase];
+  if (!agent) return;
+  await recordAgentRun({ incident_id: id, agent, tools_used: [], citations: [], output: { error: llmErrorMessage(err) }, status: 'error', unsupported_claims: [], latency_ms: 0, tokens: 0 }).catch(e => console.error('Could not persist agent error', e));
+}
+const validId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+app.get('/api/incidents/:id/workflow', async (req, res) => {
+  if (!validId(req.params.id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
+  try {
+    const w = await loadWorkflow(req.params.id);
+    if (!w) { res.status(404).json({ error: 'Incident not found' }); return; }
+    const liveJob = activeJobId ? jobs.get(activeJobId) : undefined;
+    const live = liveJob?.status !== 'complete' ? liveJob?.incidents.find(i => i.incidentId === req.params.id && !i.finishedAt) : undefined;
+    const active = live ? phaseAgent[live.phase] : undefined;
+    let blocked = false;
+    const stages = AGENTS.map((agent, index) => {
+      let run = w.latest[index];
+      if (live?.startedAt && live.phase !== 'reporting' && run && new Date(run.created_at).getTime() < live.startedAt) run = undefined;
+      const status = agent === active ? 'running' : run?.status === 'error' ? 'error' : run?.status === 'skipped' ? 'skipped' : run ? 'complete' : index === 3 && w.canReport && !live ? 'ready' : blocked ? 'blocked' : 'waiting';
+      if (status === 'error' || status === 'skipped') blocked = true;
+      return { agent, status, runId: run?.run_id, tokens: run?.tokens ?? 0, durationMs: run?.latency_ms ?? 0, output: run?.output ?? {} };
+    });
+    res.json({ stages, active: !!live, busy: !!activeJobId, canReport: w.canReport && !activeJobId, canInvestigate: !activeJobId && !w.report, reason: w.reason, report: w.report, startedAt: live?.startedAt ?? null });
+  } catch (err) { res.status(500).json({ error: llmErrorMessage(err) }); }
+});
+
+for (const action of ['investigate', 'report'] as const) {
+  app.post(`/api/incidents/:id/${action}`, async (req, res) => {
+    const id = req.params.id as string;
+    if (!validId(id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
+    if (activeJobId) { res.status(409).json({ error: 'Another investigation is running. Wait for it to finish.' }); return; }
+    const jobId = randomUUID();
+    activeJobId = jobId; // Claim before the first await; shared with CSV uploads.
+    let handedOff = false;
+    try {
+      const w = await loadWorkflow(id);
+      if (!w) { res.status(404).json({ error: 'Incident not found' }); return; }
+      if (w.report) { res.json({ complete: true }); return; }
+      if (action === 'report' && !w.canReport) { res.status(409).json({ error: w.reason }); return; }
+      const eventIndex = action === 'report' ? await reportContext(w) : undefined;
+      const inc = w.incident;
+      const ij: IncidentJob = { incidentId: id, code: inc.code, title: inc.title, attackType: inc.title, risk: inc.risk_score, phase: action === 'report' ? 'reporting' : 'queued', startedAt: Date.now() };
+      const job: Job = { jobId, batchId: inc.batch_id ?? '', createdAt: Date.now(), status: 'investigating', incidents: [ij] };
+      jobs.set(jobId, job);
+      handedOff = true;
+      res.status(202).json({ jobId });
+      void (async () => {
+        try {
+          if (action === 'investigate') await runInvestigations(job);
+          else {
+            await runReportWriter(id, w.supported, w.evidence, eventIndex!, w.assessment);
+            ij.phase = 'done_with_report';
+          }
+        } catch (err) {
+          await recordFailure(id, ij.phase, err);
+          ij.phase = 'error'; ij.error = llmErrorMessage(err);
+        } finally {
+          ij.finishedAt = Date.now(); job.status = 'complete';
+          if (activeJobId === jobId) activeJobId = null;
+        }
+      })();
+    } catch (err) { res.status(500).json({ error: llmErrorMessage(err) }); }
+    finally { if (!handedOff && activeJobId === jobId) activeJobId = null; }
+  });
+}
 
 app.listen(PORT, HOST, () => {
   console.log(`[ai-soc] upload backend on http://${HOST}:${PORT}  (LOCAL-ONLY, UNAUTHENTICATED — do not expose)`);

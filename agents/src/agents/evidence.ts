@@ -116,8 +116,10 @@ export async function runEvidenceCollector(incidentId: string): Promise<Evidence
         console.warn(
           `[evidence] ${incident?.code ?? incidentId}: entity-fallback narrowing found no ` +
             `event matching the incident's own families (${[...families].join(', ')}); ` +
-            `keeping all ${candidates.length} entity-matched events (evidence may span scenarios)`,
+            `refusing ${candidates.length} unrelated entity-matched events`,
         );
+        narrowedFrom = candidates.length;
+        eventIndex.clear();
       } else if (keep.size < candidates.length) {
         narrowedFrom = candidates.length;
         for (const id of [...eventIndex.keys()]) if (!keep.has(id)) eventIndex.delete(id);
@@ -145,7 +147,7 @@ export async function runEvidenceCollector(incidentId: string): Promise<Evidence
   const shortCode = incident?.code ?? incidentId.slice(0, 8);
   for (const f of parsed.evidence) {
     const good = f.source_event_ids.filter((id) => validIds.has(id));
-    if (good.length === 0) {
+    if (good.length === 0 || good.length !== f.source_event_ids.length) {
       dropped++;
       continue;
     }

@@ -2,13 +2,15 @@
 
 The demo runs on **CICIDS2017** flow records — a real, widely-cited intrusion dataset
 (Canadian Institute for Cybersecurity / UNB) — not synthetic logs. Each flow carries a
-`Label` column (`BENIGN` or the attack name). Ground truth is used **only for evaluation**;
+`Label` column (`BENIGN` or the attack name). Ground truth is used for evaluation and
+the explicitly marked annotation bridge;
 the behavioural detectors never read the `Label` (they fire on flow features: failed-login
 bursts, flow-rate z-scores, and low-variance beacon fan-in). We target **three** attack
 families that map cleanly to MITRE ATT&CK.
 
 > **Which CSVs to upload:** use the trimmed slices in `data/cicids/demo/` — each yields
-> exactly **one** clean incident and stays inside the Gemini free-tier quota. The raw
+> one DDoS incident, two brute-force incidents, or eight botnet incidents with the current
+> annotation bridge. Start with DDoS and budget provider quota for every incident. The raw
 > CICIDS day-files (70–170 MB) discover ~9 incidents each and will exhaust the quota if
 > auto-investigated. Do **not** demo on the raw files.
 
@@ -16,7 +18,7 @@ families that map cleanly to MITRE ATT&CK.
 
 | # | Family | ATT&CK | Detectors that fire | Demo upload | Seed incident |
 |---|--------|--------|---------------------|-------------|---------------|
-| 1 | SSH/FTP brute-force credential attack | **T1110** | `R-NET-BRUTEFORCE` + `failed_login`-style burst | `demo_bruteforce_T1110.csv` | `INC-2017-0001` |
+| 1 | SSH/FTP brute-force credential attack | **T1110** | `R-NET-BRUTEFORCE` (repeated flows to FTP/SSH) | `demo_bruteforce_T1110.csv` | `INC-2017-0001` |
 | 2 | Volumetric HTTP DDoS flood | **T1498** | `R-NET-FLOOD` + `flow_rate_zscore` (statistical) | `demo_ddos_T1498.csv` | `INC-2017-0002` |
 | 3 | Ares botnet C2 beaconing | **T1071** | `R-NET-BEACON` (external C2, internal fan-in ≥ 3) | `demo_botnet_T1071.csv` | `INC-2017-0003` |
 
@@ -98,4 +100,6 @@ through the **fail-closed verifier**. Over the 3 seed incidents (4 stored invest
 > affected incident in seconds** with a clear "model overloaded / quota reached" message
 > (fast-fail in `agents/src/llm.ts`), instead of stalling ~6 min per incident. Detection and
 > the batch still complete; fall back to the **stored** seed investigations for the
-> agent-layer walkthrough (they are pre-populated and quota-free).
+> agent-layer walkthrough if that database already contains investigations. A freshly loaded
+> seed contains telemetry only; the historical evaluation JSON and project report remain
+> available offline, but new incident reports require a successful live run.

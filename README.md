@@ -63,8 +63,11 @@ needs judgement, and its output is then checked.
 
 The graph is linear — `START → collect → hypothesize → verify → write_report → END`, with
 no conditional edges. Branching is done by early-return guards inside the node bodies,
-which keeps the traversal order fixed and auditable: every incident produces the same four
-`agent_runs` rows in the same order.
+which keeps the traversal order fixed and auditable. In the browser, agents 1–3 run
+automatically and pause at `ready_for_report` when findings pass verification. Click
+**Generate report** on Agent 4 to create and download the report. The CLI still runs
+all four stages automatically. Skipped and failed stages are recorded explicitly;
+a stage waiting for your click has not run yet.
 
 See [`AI_SOC_Team_Handbook.html`](AI_SOC_Team_Handbook.html) for a walkthrough written for
 teammates, and [`docs/`](docs/) for the plan and execution tracker.
@@ -93,7 +96,7 @@ data/               seed SQL, eval JSON, CICIDS CSVs
 
 ## Requirements
 
-- **Node.js** 20+ (developed on 24) — for `agents/` and `web/`
+- **Node.js** 22.13+ (22.22.2 verified) or 24 — for `agents/`, `web/`, and module-mocking tests
 - **Python 3** — the detection plane and `analyze.py` use the **standard library only**
 - **PostgreSQL** — a Supabase project (the UI reads through PostgREST; the backend writes
   through `DATABASE_URL`)
@@ -125,21 +128,24 @@ For the UI, create `web/.env.local`:
 | `VITE_SUPABASE_ANON_KEY` | Publishable/anon key. RLS restricts it to reads. |
 | `VITE_ANALYZE_API` | Optional; defaults to `http://127.0.0.1:8787`. |
 
-**2. Load the schema and seed.**
+**2. Apply all migrations.** This preserves existing telemetry and investigations.
 
 ```sh
 bash scripts/load_db.sh
 ```
 
-> [!WARNING]
-> `load_db.sh` applies **only `0001_init.sql`** and the seed. The RLS policies
-> (`0002_alerts_rls.sql`) and the batch tables (`0003_batches.sql`) are **not** applied by
-> it, and without `0002` the browser has no read access. Apply them yourself:
->
-> ```sh
-> psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_alerts_rls.sql
-> psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0003_batches.sql
-> ```
+For a fresh demo database, explicitly load the committed CICIDS baseline:
+
+```sh
+bash scripts/load_db.sh --seed cicids --replace-data
+```
+
+Seed SQL replaces telemetry, evidence, and agent runs. It does not restore the
+historical investigations in `data/investigation_eval.json`; run an investigation
+with your Gemini credentials to populate new reports. The optional synthetic
+baseline uses `--seed synthetic --replace-data`.
+
+Copy `web/.env.example` to `web/.env.local` and fill the two Supabase read credentials.
 
 ## Running
 
@@ -147,10 +153,10 @@ Two processes in development: the local backend and the UI.
 
 ```sh
 # Terminal 1 — agents backend (upload + auto-investigate)
-cd agents && npm install && npm run server        # 127.0.0.1:8787
+cd agents && npm ci && npm run server             # 127.0.0.1:8787
 
 # Terminal 2 — analyst UI
-cd web && npm install && npm run dev              # http://localhost:5173
+cd web && npm ci && npm run dev                   # http://localhost:5173
 ```
 
 Other entry points:
@@ -166,8 +172,21 @@ python3 ml/analyze.py data/cicids/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.c
 python3 ml/train_mlp.py          # retrain the offline MLP -> data/ml_eval.json
 ```
 
-If `data/seed.sql` is absent, `load_db.sh` regenerates it via
-`ml/generate_synthetic_logs.py` and `ml/pipeline.py`.
+Start the demo with `data/cicids/demo/demo_ddos_T1498.csv` (one incident).
+The current brute-force and botnet slices produce two and eight incidents,
+respectively, including annotation-derived cases; budget Gemini calls accordingly.
+See [the demo script](docs/demo-scenarios.md), [architecture](docs/architecture.md),
+and [final report](docs/final-report.md).
+
+Run all offline checks after installing both dependency sets:
+
+```sh
+bash scripts/check.sh
+```
+
+Checks cover CSV parsing, repeatable detection, event ownership, annotation-only
+evaluation, invalid citations, contradictory techniques, omitted verifier verdicts,
+the annotation confidence cap, four-stage audit traversal, type checks, and the UI build.
 
 ## HTTP API
 
@@ -177,10 +196,15 @@ writes with the secret `DATABASE_URL` and runs uploaded CSVs through the Python 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/health` | Liveness. |
-| `POST /api/analyze` | Multipart `file` (`.csv`, size-capped). Runs detection, bulk-inserts one batch in a transaction, responds immediately with the detected incidents, then investigates them asynchronously. |
-| `GET /api/jobs/:jobId` | Poll per-incident phase: `collecting` → `hypothesizing` → `verifying` → `reporting` → `done_with_report` \| `done_no_report` \| `error`. |
+| `POST /api/analyze` | Multipart `file` (`.csv`, size-capped). Runs detection, returns detected incidents, then persists a batch transaction and investigates asynchronously. Poll the job to confirm persistence and terminal results. |
+| `GET /api/jobs/:jobId` | Poll per-incident phase: `collecting` → `hypothesizing` → `verifying` → `ready_for_report`; manual generation: `reporting` → `done_with_report` \| `done_no_report` \| `error`. |
+| `GET /api/incidents/:id/workflow` | Current attempt, four agent states, recorded outputs, report eligibility and saved report. Survives page refresh via stored audit records; active work is tracked by the local process. |
+| `POST /api/incidents/:id/investigate` | Start or retry agents 1–3 on an existing incident. |
+| `POST /api/incidents/:id/report` | Run Agent 4 using the latest verified, grounded findings within budget. Returns `409` when verification has not passed; an existing report is acknowledged without another model call. |
 
-Uploads are single-flight: a second upload while one is investigating is rejected with
+The Analyze and incident pages show animated active stages, completion progress, evidence and verdict details, token counts, confidence assessments, and Markdown report download. Progress counts completed agents rather than guessing model completion percentages.
+
+Uploads and manual actions share a single-flight lock: a second upload while one is investigating is rejected with
 `409`, because the LLM throttle is process-global and the calls would interleave anyway.
 
 ## What it detects
@@ -289,6 +313,5 @@ Read this before exposing anything.
   connected branch in a working state.
 - Keep AI-SOC routes in TanStack Start (`web/src/routes/`) and the shared analyst shell in
   `web/src/components/soc/`. The UI never performs privileged writes.
-- Without `VITE_SUPABASE_URL`, the UI falls back to a static snapshot of the CICIDS seed.
-  It is labelled as a snapshot in the interface and must never be presented as live
-  telemetry.
+- Without Supabase read credentials, the UI displays a configuration error. The unused
+  static snapshot file is not a substitute for a configured database.

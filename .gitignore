@@ -6,6 +6,9 @@ mlruns/
 # ---- node / web
 node_modules/
 dist/
+.output/
+.wrangler/
+.nitro/
 .env
 .env.local
 # ---- generated data (regenerate with `python3 ml/generate_synthetic_logs.py && python3 ml/pipeline.py`)

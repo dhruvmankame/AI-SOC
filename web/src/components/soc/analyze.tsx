@@ -1,3 +1,4 @@
+import { AgentWorkflow } from "./agent-workflow";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -16,20 +17,10 @@ import {
   fetchJob,
   isTerminal,
   phaseLabels,
-  phaseProgress,
   type AnalyzeResponse,
   type Job,
 } from "@/lib/analyze-client";
 import { setActiveBatchId } from "@/lib/active-batch";
-import {
-  fetchAgentRuns,
-  fetchIncidents,
-  fetchVerifierCounts,
-  latestRun,
-  type AttackAssessment,
-  type IncidentRow,
-  type ReportOutput,
-} from "@/lib/live-api";
 import { SectionTitle, Severity } from "./layout";
 
 type Stage = "idle" | "uploading" | "analyzing" | "ready" | "error";
@@ -42,35 +33,7 @@ export function Analyze() {
   const [job, setJob] = useState<Job | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [uploadPct, setUploadPct] = useState(0);
-  const [liveIncidents, setLiveIncidents] = useState<IncidentRow[]>([]);
-  const [verifierCounts, setVerifierCounts] = useState<
-    Map<string, { supported: number; rejected: number; assessment: AttackAssessment[] }>
-  >(new Map());
-  const [reports, setReports] = useState<Map<string, ReportOutput>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
-
-  async function refreshLive(batchId: string) {
-    try {
-      const incs = await fetchIncidents(batchId);
-      setLiveIncidents(incs);
-      const counts = await fetchVerifierCounts(incs.map((i) => i.incident_id));
-      setVerifierCounts(counts);
-      // Pull the full written report (narrative + actions) for anything that
-      // produced one, so the analyst sees it here without navigating away.
-      const done = incs.filter((i) => i.summary);
-      if (done.length > 0) {
-        const pairs = await Promise.all(
-          done.map(async (i) => {
-            const run = latestRun(await fetchAgentRuns(i.incident_id), "report-writer");
-            return [i.incident_id, (run?.output as ReportOutput | undefined) ?? null] as const;
-          }),
-        );
-        setReports(new Map(pairs.filter((p): p is readonly [string, ReportOutput] => !!p[1])));
-      }
-    } catch {
-      // During the short inserting stage the batch may not be visible yet.
-    }
-  }
 
   useEffect(() => {
     if (!response) return;
@@ -84,17 +47,11 @@ export function Analyze() {
         if (!live) return;
         setJob(next);
 
-        if (next.status !== "inserting") {
-          await refreshLive(response.batchId);
-        }
-
         if (
           next.status !== "complete" ||
           next.incidents.some((incident) => !isTerminal(incident.phase))
         ) {
           timer = setTimeout(tick, 1200);
-        } else {
-          await refreshLive(response.batchId);
         }
       } catch (e) {
         if (live) setError(e instanceof Error ? e.message : String(e));
@@ -115,8 +72,6 @@ export function Analyze() {
     setError(null);
     setResponse(null);
     setJob(null);
-    setLiveIncidents([]);
-    setVerifierCounts(new Map());
     setUploadPct(0);
     setStage("uploading");
 
@@ -129,7 +84,6 @@ export function Analyze() {
       setResponse(result);
       setActiveBatchId(result.batchId);
       setStage("ready");
-      void refreshLive(result.batchId);
     } catch (e) {
       setStage("error");
       setError(e instanceof Error ? e.message : String(e));
@@ -232,13 +186,32 @@ export function Analyze() {
         </section>
 
         <section className="panel-surface overflow-hidden xl:col-span-4">
-          <SectionTitle label="Four-stage pipeline" aside="Deterministic ingest · evidence-grounded agents" />
+          <SectionTitle
+            label="Meet your four agents"
+            aside="After CSV standardization and detection"
+          />
           <div className="p-5">
             {[
-              { n: "01", label: "Standardize", text: "Any flow CSV mapped to one canonical schema — deterministic, no LLM" },
-              { n: "02", label: "Identify", text: "Evidence grounded in cited event IDs, mapped to an ATT&CK technique" },
-              { n: "03", label: "Verify & score", text: "Fail-closed verifier rejects uncited claims, then scores the survivors" },
-              { n: "04", label: "Report", text: "Analyst report written from verified findings only" },
+              {
+                n: "01",
+                label: "Evidence collector",
+                text: "Reads incident events and signals; grounds facts in source event IDs",
+              },
+              {
+                n: "02",
+                label: "Hypothesis & ATT&CK",
+                text: "Forms attack hypotheses with evidence citations and technique mappings",
+              },
+              {
+                n: "03",
+                label: "Verify & score",
+                text: "Fail-closed verifier rejects uncited claims, then scores the survivors",
+              },
+              {
+                n: "04",
+                label: "Report",
+                text: "Click Generate report after verification to run the report writer",
+              },
             ].map((s, i) => (
               <div key={s.n} className="relative flex gap-3 pb-5 last:pb-0">
                 <div className="relative flex flex-col items-center">
@@ -282,11 +255,15 @@ export function Analyze() {
               <div className="grid gap-3 border-t border-border p-5 sm:grid-cols-3">
                 <div className="rounded border border-border bg-panel2/30 p-3">
                   <div className="font-mono text-[10px] uppercase text-faint">Precision</div>
-                  <div className="mt-1 text-lg">{((response.eval.precision ?? 0) * 100).toFixed(1)}%</div>
+                  <div className="mt-1 text-lg">
+                    {((response.eval.precision ?? 0) * 100).toFixed(1)}%
+                  </div>
                 </div>
                 <div className="rounded border border-border bg-panel2/30 p-3">
                   <div className="font-mono text-[10px] uppercase text-faint">Recall</div>
-                  <div className="mt-1 text-lg">{((response.eval.recall ?? 0) * 100).toFixed(1)}%</div>
+                  <div className="mt-1 text-lg">
+                    {((response.eval.recall ?? 0) * 100).toFixed(1)}%
+                  </div>
                 </div>
                 <div className="rounded border border-border bg-panel2/30 p-3">
                   <div className="font-mono text-[10px] uppercase text-faint">F1</div>
@@ -305,9 +282,18 @@ export function Analyze() {
               <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   ["Rows read", response.standardization.rows_read.toLocaleString()],
-                  ["Rows standardized", response.standardization.rows_standardized.toLocaleString()],
-                  ["Dropped (bad timestamp)", response.standardization.rows_dropped_unparseable_timestamp.toLocaleString()],
-                  ["Attack column", response.standardization.label_column_present ? "present" : "absent"],
+                  [
+                    "Rows standardized",
+                    response.standardization.rows_standardized.toLocaleString(),
+                  ],
+                  [
+                    "Dropped (bad timestamp)",
+                    response.standardization.rows_dropped_unparseable_timestamp.toLocaleString(),
+                  ],
+                  [
+                    "Attack column",
+                    response.standardization.label_column_present ? "present" : "absent",
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-panel p-5">
                     <div className="font-mono text-[10px] uppercase text-faint">{label}</div>
@@ -317,18 +303,24 @@ export function Analyze() {
               </div>
 
               <div className="border-t border-border p-5">
-                <div className="mb-2 font-mono text-[10px] uppercase text-faint">Canonical field mapping</div>
+                <div className="mb-2 font-mono text-[10px] uppercase text-faint">
+                  Canonical field mapping
+                </div>
                 <div className="flex flex-wrap gap-2">
-                  {Object.entries(response.standardization.canonical_mapping).map(([canonical, source]) => (
-                    <span
-                      key={canonical}
-                      className={`rounded border px-2 py-1 font-mono text-[10px] ${
-                        source ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-panel2/40 text-faint"
-                      }`}
-                    >
-                      {canonical} {source ? `← ${source}` : "← (not found)"}
-                    </span>
-                  ))}
+                  {Object.entries(response.standardization.canonical_mapping).map(
+                    ([canonical, source]) => (
+                      <span
+                        key={canonical}
+                        className={`rounded border px-2 py-1 font-mono text-[10px] ${
+                          source
+                            ? "border-primary/25 bg-primary/10 text-primary"
+                            : "border-border bg-panel2/40 text-faint"
+                        }`}
+                      >
+                        {canonical} {source ? `← ${source}` : "← (not found)"}
+                      </span>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -339,29 +331,35 @@ export function Analyze() {
                   </div>
                   <div className="space-y-2">
                     {response.standardization.attack_classes.map((c) => (
-                      <div key={c.attack_class} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-panel2/30 px-3 py-2">
+                      <div
+                        key={c.attack_class}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-panel2/30 px-3 py-2"
+                      >
                         <span className="text-xs font-medium">{c.attack_class}</span>
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {c.annotated_flows.toLocaleString()} flows · {c.corroboration_pct}% corroborated
+                          {c.annotated_flows.toLocaleString()} flows · {c.corroboration_pct}%
+                          corroborated
                           {c.corroboration_pct === 0 && " (dataset annotation only)"}
                         </span>
                       </div>
                     ))}
                   </div>
                   <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                    Corroboration = share of annotated flows an independent behavioural detector also flagged.
-                    A 0% class is carried forward on the dataset&apos;s own label, not on independent detection —
-                    the verifier scores and labels it as such.
+                    Corroboration = share of annotated flows an independent behavioural detector
+                    also flagged. A 0% class is carried forward on the dataset&apos;s own label, not
+                    on independent detection — the verifier scores and labels it as such.
                   </p>
                 </div>
               )}
 
               {response.standardization.incidents_truncated > 0 && (
                 <div className="border-t border-border p-5 text-xs text-high">
-                  {response.standardization.incidents_discovered} incidents were discovered;
-                  only the {response.standardization.incidents_discovered - response.standardization.incidents_truncated} highest-risk
-                  were kept for AI investigation to stay inside the LLM quota.
-                  {" "}{response.standardization.incidents_truncated} were not investigated.
+                  {response.standardization.incidents_discovered} incidents were discovered; only
+                  the{" "}
+                  {response.standardization.incidents_discovered -
+                    response.standardization.incidents_truncated}{" "}
+                  highest-risk were kept for AI investigation to stay inside the LLM quota.{" "}
+                  {response.standardization.incidents_truncated} were not investigated.
                 </div>
               )}
             </section>
@@ -379,7 +377,10 @@ export function Analyze() {
             ) : (
               <div className="divide-y divide-border/70">
                 {response.alerts.map((alert, index) => (
-                  <div key={`${alert.title}-${index}`} className="grid gap-3 p-5 md:grid-cols-[1fr_auto]">
+                  <div
+                    key={`${alert.title}-${index}`}
+                    className="grid gap-3 p-5 md:grid-cols-[1fr_auto]"
+                  >
                     <div>
                       <div className="flex items-center gap-2">
                         <Radio className="size-4 text-high" />
@@ -387,7 +388,8 @@ export function Analyze() {
                         <Severity value={alert.severity} />
                       </div>
                       <div className="mt-2 font-mono text-[10px] text-faint">
-                        {alert.detector} · {alert.entity} · {alert.correlationCount.toLocaleString()} correlated flows
+                        {alert.detector} · {alert.entity} ·{" "}
+                        {alert.correlationCount.toLocaleString()} correlated flows
                       </div>
                     </div>
                     <div className="font-mono text-sm text-primary">
@@ -404,6 +406,11 @@ export function Analyze() {
               label="Live investigation"
               aside={`${response.incidents.length} incident${response.incidents.length === 1 ? "" : "s"} · ${job?.status ?? "inserting"}`}
             />
+            {job?.error && (
+              <p role="alert" className="p-5 text-sm text-crit">
+                Dataset could not be saved: {job.error}
+              </p>
+            )}
             {response.incidents.length === 0 ? (
               <div className="p-5">
                 <div className="flex items-center gap-2 text-sm">
@@ -416,8 +423,6 @@ export function Analyze() {
                 {response.incidents.map((inc) => {
                   const current = job?.incidents.find((item) => item.incidentId === inc.incidentId);
                   const phase = current?.phase ?? "queued";
-                  const liveRow = liveIncidents.find((item) => item.incident_id === inc.incidentId);
-                  const counts = verifierCounts.get(inc.incidentId);
 
                   return (
                     <div key={inc.incidentId} className="p-5">
@@ -432,94 +437,17 @@ export function Analyze() {
                           </div>
                         </div>
                         <span className="font-mono text-[11px] text-primary">
-                          {job?.status === "inserting" ? "Saving dataset" : phaseLabels[phase]}
+                          {job?.status === "inserting"
+                            ? "Saving dataset"
+                            : isTerminal(phase)
+                              ? "Investigation workspace"
+                              : phaseLabels[phase]}
                         </span>
                       </div>
 
-                      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-panel2">
-                        <div
-                          className={`h-full transition-all duration-500 ${
-                            phase === "error"
-                              ? "bg-crit"
-                              : phase === "done_no_report"
-                                ? "bg-high"
-                                : "bg-primary"
-                          }`}
-                          style={{
-                            width: `${job?.status === "inserting" ? 10 : phaseProgress[phase]}%`,
-                          }}
-                        />
+                      <div className="mt-4">
+                        <AgentWorkflow incidentId={inc.incidentId} />
                       </div>
-
-                      {current?.error && <p className="mt-3 text-xs text-crit">{current.error}</p>}
-
-                      {counts && (
-                        <div className="mt-3 font-mono text-[10px] text-muted-foreground">
-                          verifier · {counts.supported} supported · {counts.rejected} rejected
-                        </div>
-                      )}
-
-                      {counts && counts.assessment.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          <div className="font-mono text-[10px] uppercase text-faint">
-                            Stage 3 · attack confidence
-                          </div>
-                          {counts.assessment.map((a) => (
-                            <div key={a.hypothesis_id} className="rounded border border-border bg-panel2/30 p-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-mono text-[10px] text-primary">{a.technique}</span>
-                                <span className="font-mono text-sm text-foreground">{a.confidence_pct}%</span>
-                              </div>
-                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-panel2">
-                                <div
-                                  className={`h-full ${a.corroborated_by_detector ? "bg-primary" : "bg-high"}`}
-                                  style={{ width: `${Math.min(100, a.confidence_pct)}%` }}
-                                />
-                              </div>
-                              <div className="mt-2 font-mono text-[10px] text-muted-foreground">
-                                {a.basis}
-                                {a.corroborated_by_detector
-                                  ? ` · detector ${a.top_detector} (${a.detector_component}) × entailment ${a.entailment_component}`
-                                  : " · dataset label only, no independent detector confirmed this"}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {liveRow?.summary && (
-                        <div className="mt-4 rounded border border-primary/20 bg-primary/5 p-4">
-                          <div className="mb-1 font-mono text-[10px] uppercase text-primary">
-                            Verified report
-                          </div>
-                          <p className="text-xs leading-relaxed text-foreground">{liveRow.summary}</p>
-                          {reports.get(inc.incidentId)?.narrative && (
-                            <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                              {reports.get(inc.incidentId)!.narrative}
-                            </p>
-                          )}
-                          {(reports.get(inc.incidentId)?.recommended_actions?.length ?? 0) > 0 && (
-                            <>
-                              <div className="mb-1 mt-3 font-mono text-[10px] uppercase text-primary">
-                                Recommended actions (simulation-only)
-                              </div>
-                              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-                                {reports.get(inc.incidentId)!.recommended_actions!.map((a, i) => (
-                                  <li key={i}>{a}</li>
-                                ))}
-                              </ul>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {phase === "done_no_report" && (
-                        <div className="mt-4 rounded border border-high/30 bg-high/10 p-4 text-xs leading-relaxed text-foreground">
-                          <span className="font-medium">No report written.</span> Every hypothesis
-                          failed verification, so the pipeline refused to assert an unsupported
-                          narrative. The rejected claims and reasons are on the incident record.
-                        </div>
-                      )}
 
                       {isTerminal(phase) && (
                         <Link
@@ -543,7 +471,8 @@ export function Analyze() {
         <Info className="mt-0.5 size-4 shrink-0 text-low" />
         <p>
           Detection results are returned before the Gemini investigation finishes. The AI section
-          refreshes live in the background, so a remote LLM delay does not block the next CSV upload.
+          refreshes live in the background. One investigation runs at a time; after verification,
+          use Agent 4 to generate the report.
         </p>
       </div>
     </div>

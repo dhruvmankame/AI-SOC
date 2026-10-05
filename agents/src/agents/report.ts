@@ -42,6 +42,7 @@ export async function runReportWriter(
   assessment: AttackAssessment[] = [],
 ): Promise<ReportResult> {
   const t0 = Date.now();
+  if (supported.length === 0) throw new Error('report requires at least one verified finding');
 
   const citedEvIds = new Set(supported.flatMap((h) => h.citations));
   const usedEvidence = evidence.filter((e) => citedEvIds.has(e.evidence_id));

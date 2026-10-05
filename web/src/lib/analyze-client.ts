@@ -6,6 +6,7 @@ export type Phase =
   | "hypothesizing"
   | "verifying"
   | "reporting"
+  | "ready_for_report"
   | "done_with_report"
   | "done_no_report"
   | "error";
@@ -25,6 +26,7 @@ export type Job = {
   batchId: string;
   status: "parsing" | "inserting" | "investigating" | "complete";
   incidents: JobIncident[];
+  error?: string;
 };
 
 export type AnalyzeAlert = {
@@ -119,7 +121,11 @@ export function analyzeFile(
     };
 
     xhr.onerror = () => {
-      reject(new Error("The local analysis service is unavailable. Check the agents service and CORS settings."));
+      reject(
+        new Error(
+          "The local analysis service is unavailable. Check the agents service and CORS settings.",
+        ),
+      );
     };
 
     xhr.onload = () => {
@@ -149,7 +155,9 @@ async function parse<T>(response: Response): Promise<T> {
 }
 
 export async function fetchJob(id: string): Promise<Job> {
-  return parse<Job>(await fetch(`${BASE}/api/jobs/${encodeURIComponent(id)}`, { cache: "no-store" }));
+  return parse<Job>(
+    await fetch(`${BASE}/api/jobs/${encodeURIComponent(id)}`, { cache: "no-store" }),
+  );
 }
 
 export const phaseLabels: Record<Phase, string> = {
@@ -158,8 +166,9 @@ export const phaseLabels: Record<Phase, string> = {
   hypothesizing: "Forming hypotheses",
   verifying: "Verifying against evidence",
   reporting: "Writing report",
+  ready_for_report: "Ready to generate report",
   done_with_report: "Verified report ready",
-  done_no_report: "Claims rejected",
+  done_no_report: "No verified report written",
   error: "Investigation error",
 };
 
@@ -169,10 +178,54 @@ export const phaseProgress: Record<Phase, number> = {
   hypothesizing: 45,
   verifying: 65,
   reporting: 85,
+  ready_for_report: 75,
   done_with_report: 100,
   done_no_report: 100,
   error: 100,
 };
 
 export const isTerminal = (phase: Phase) =>
-  ["done_with_report", "done_no_report", "error"].includes(phase);
+  ["ready_for_report", "done_with_report", "done_no_report", "error"].includes(phase);
+
+export type WorkflowStage = {
+  agent: string;
+  status: "waiting" | "running" | "complete" | "ready" | "blocked" | "skipped" | "error";
+  runId?: string;
+  tokens: number;
+  durationMs: number;
+  output: {
+    attack_assessment?: AttackAssessment[];
+    evidence?: { fact: string }[];
+    hypotheses?: { statement: string }[];
+    verdicts?: { supported: boolean; reason: string }[];
+    reason?: string;
+    error?: string;
+  };
+};
+export type Workflow = {
+  stages: WorkflowStage[];
+  active: boolean;
+  busy: boolean;
+  canReport: boolean;
+  canInvestigate: boolean;
+  reason: string;
+  startedAt: number | null;
+  report: { summary: string; narrative?: string; recommended_actions?: string[] } | null;
+};
+export async function fetchWorkflow(id: string): Promise<Workflow> {
+  return parse<Workflow>(
+    await fetch(`${BASE}/api/incidents/${encodeURIComponent(id)}/workflow`, { cache: "no-store" }),
+  );
+}
+export async function startAgentAction(
+  id: string,
+  action: "investigate" | "report",
+): Promise<void> {
+  await parse(
+    await fetch(`${BASE}/api/incidents/${encodeURIComponent(id)}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }),
+  );
+}

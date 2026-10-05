@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Evidence-grounded multi-agent SOC investigation (LangGraph.js + Gemini).",
   "scripts": {
+    "test": "node --import tsx --experimental-test-module-mocks --test tests/*.test.ts",
     "investigate": "tsx src/run.ts",
     "eval": "tsx src/eval.ts",
     "server": "tsx src/server.ts",
