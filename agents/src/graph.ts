@@ -1,6 +1,6 @@
 import { StateGraph, Annotation, START, END } from '@langchain/langgraph';
 import { ENV } from './env.js';
-import { getIncident } from './tools.js';
+import { getIncident, recordAgentRun } from './tools.js';
 import { runEvidenceCollector } from './agents/evidence.js';
 import { runHypothesisAgent } from './agents/hypothesis.js';
 import { runVerifier } from './agents/verifier.js';
@@ -18,6 +18,8 @@ import type { EvidenceItem, Hypothesis, Verdict, EventRow, AttackAssessment } fr
 
 const SocState = Annotation.Root({
   incidentId: Annotation<string>(),
+  autoReport: Annotation<boolean>({ reducer: (_, b) => b, default: () => true }),
+  reportPending: Annotation<boolean>({ reducer: (_, b) => b, default: () => false }),
   incidentCode: Annotation<string>(),
   seedTechniques: Annotation<string[]>({ reducer: (_, b) => b, default: () => [] }),
   evidence: Annotation<EvidenceItem[]>({ reducer: (_, b) => b, default: () => [] }),
@@ -40,23 +42,39 @@ function overBudget(s: SocStateT): boolean {
   return s.tokensUsed >= ENV.maxTokens;
 }
 
+async function recordSkip(incidentId: string, agent: string, reason: string) {
+  await recordAgentRun({ incident_id: incidentId, agent, tools_used: [], citations: [],
+    output: { skipped: true, reason }, status: 'skipped', unsupported_claims: [],
+    latency_ms: 0, tokens: 0 });
+}
+
 const graph = new StateGraph(SocState)
   .addNode('collect', async (s: SocStateT) => {
     const r = await runEvidenceCollector(s.incidentId);
     return { evidence: r.evidence, eventIndex: r.eventIndex, tokensUsed: r.tokens };
   })
   .addNode('hypothesize', async (s: SocStateT) => {
-    if (overBudget(s) || s.evidence.length === 0) return { hypotheses: [] };
+    if (overBudget(s) || s.evidence.length === 0) {
+      await recordSkip(s.incidentId, 'hypothesis-attack', overBudget(s) ? 'token budget exhausted' : 'no grounded evidence');
+      return { hypotheses: [] };
+    }
     const r = await runHypothesisAgent(s.incidentId, s.incidentCode, s.evidence, s.seedTechniques);
     return { hypotheses: r.hypotheses, tokensUsed: r.tokens };
   })
   .addNode('verify', async (s: SocStateT) => {
-    if (s.hypotheses.length === 0) return { supported: [], rejected: [], verdicts: [], assessment: [] };
+    if (s.hypotheses.length === 0) {
+      await recordSkip(s.incidentId, 'verifier', 'no hypotheses');
+      return { supported: [], rejected: [], verdicts: [], assessment: [] };
+    }
     const r = await runVerifier(s.incidentId, s.hypotheses, s.evidence);
     return { verdicts: r.verdicts, supported: r.supported, rejected: r.rejected, assessment: r.assessment, tokensUsed: r.tokens };
   })
   .addNode('write_report', async (s: SocStateT) => {
-    if (s.supported.length === 0) return {};
+    if (s.supported.length === 0 || overBudget(s)) {
+      await recordSkip(s.incidentId, 'report-writer', s.supported.length === 0 ? 'no verified findings' : 'token budget exhausted');
+      return {};
+    }
+    if (!s.autoReport) return { reportPending: true };
     const r = await runReportWriter(s.incidentId, s.supported, s.evidence, s.eventIndex, s.assessment);
     return { report: { summary: r.summary, narrative: r.narrative, recommended_actions: r.recommended_actions }, tokensUsed: r.tokens };
   })
@@ -92,6 +110,7 @@ export type InvestigatePhase =
   | 'hypothesizing'
   | 'verifying'
   | 'reporting'
+  | 'ready_for_report'
   | 'done_with_report'
   | 'done_no_report'
   | 'error';
@@ -106,6 +125,7 @@ export interface InvestigateProgress {
 export async function investigateStreaming(
   incidentId: string,
   onPhase: (p: InvestigateProgress) => void,
+  autoReport = true,
 ): Promise<SocStateT> {
   const incident = await getIncident(incidentId);
   if (!incident) throw new Error(`incident not found: ${incidentId}`);
@@ -117,6 +137,7 @@ export async function investigateStreaming(
   const stream = await socGraph.stream(
     {
       incidentId,
+      autoReport,
       incidentCode: incident.code,
       seedTechniques: incident.mitre_techniques ?? [],
     },
@@ -131,13 +152,13 @@ export async function investigateStreaming(
   let acc: Partial<SocStateT> = {};
   for await (const chunk of stream) {
     for (const [node, update] of Object.entries(chunk as Record<string, Partial<SocStateT>>)) {
-      acc = { ...acc, ...update };
-      if (NEXT[node]) onPhase({ phase: NEXT[node] });
+      acc = { ...acc, ...update, tokensUsed: (acc.tokensUsed ?? 0) + (update.tokensUsed ?? 0) };
+      if (NEXT[node] && (node !== 'verify' || autoReport)) onPhase({ phase: NEXT[node] });
     }
   }
   const hasReport = !!acc.report;
   onPhase({
-    phase: hasReport ? 'done_with_report' : 'done_no_report',
+    phase: hasReport ? 'done_with_report' : acc.reportPending ? 'ready_for_report' : 'done_no_report',
     supported: acc.supported?.length ?? 0,
     rejected: acc.rejected?.length ?? 0,
     hasReport,

@@ -1018,11 +1018,11 @@ cd agents &amp;&amp; npm run server     <span class="c"># backend on 127.0.0.1:8
 cd web    &amp;&amp; npm run dev        <span class="c"># frontend on http://localhost:5173</span></pre>
 
         <div class="note warn">
-          <strong>Do not use <code>scripts/load_db.sh</code> to set up a fresh database.</strong> It applies
-          only <code>0001</code> and the synthetic seed — it never applies <code>0002</code> or
-          <code>0003</code>. A database loaded that way has no RLS policies and no
-          <code>ingest_batches</code> table, so batch filtering and the whole upload path fail. Run the
-          three migrations explicitly, as above.
+          <strong>The setup script now applies all migrations in order.</strong>
+          Run <code>bash scripts/load_db.sh</code> to update the schema without replacing telemetry.
+          For a fresh demo database use <code>bash scripts/load_db.sh --seed cicids --replace-data</code>.
+          Seed SQL replaces events, incidents, evidence and agent runs; the committed seed contains
+          telemetry but no historical investigation reports. Configure Gemini and investigate to create them.
         </div>
 
         <h3>Command reference</h3>
@@ -1063,7 +1063,9 @@ cd web    &amp;&amp; npm run dev        <span class="c"># frontend on http://loc
           <strong>Never demo on a raw day-file.</strong> A full capture discovers roughly nine incidents,
           and the investigation stage spends real Gemini free-tier quota per incident. The slices exist to
           make a demo fast and repeatable. Also budget for it: the per-call throttle is 13 seconds and an
-          incident takes four calls, so one incident is about 45 seconds of wall clock.
+          incident takes up to four calls before retries, so allow roughly 45 seconds plus model latency.
+          With the annotation bridge, the committed DDoS slice yields one incident, brute-force yields two,
+          and botnet yields eight. Start with DDoS for the smallest quota budget.
         </div>
       </section>
 
@@ -1236,7 +1238,8 @@ cd web    &amp;&amp; npm run dev        <span class="c"># frontend on http://loc
           <li><code>web/src/lib/soc-snapshot.ts</code> is a static fallback snapshot with no importers. It is leftover from the unconnected-preview mode.</li>
           <li>Empty trailing rows in CICIDS files are treated as benign. This is harmless but it is why a file can report more rows read than rows standardised.</li>
           <li>The label bridge's <code>LABEL_SCORE</code> of 0.5 and the verifier's <code>ANNOTATION_SCORE</code> of 0.5 are the same constant in two languages. If you change one, change the other.</li>
-          <li>The evaluation numbers in section 12 predate the four-stage pipeline refactor and the attack-class bridge. The verifier logic they measure is unchanged, but regenerate with <code>npm run eval</code> before quoting them in a final report.</li>
+          <li>The evaluation numbers in section 12 predate the current refactor and safety fixes. They are historical measurements; regenerate with <code>npm run eval</code> after fresh investigations before quoting current results.</li>
+          <li>Run <code>bash scripts/check.sh</code> for offline detection and safety regression checks, type checks and the production build. See <a href="docs/architecture.md">the architecture diagram</a> and <a href="docs/final-report.md">the project report</a>.</li>
         </ul>
       </section>
 

@@ -1,7 +1,7 @@
 import { q, closeDb } from './db.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // ============================================================================
 // npm run eval — Investigation-quality evaluation (Day 3 / Phase 3).
@@ -68,12 +68,15 @@ function detectRetrieval(r: RunRow): string {
 // verifier -> report?]. A fresh evidence-collector run starts a new one, so an
 // incident investigated twice (e.g. a rejected attempt then a fixed one) yields
 // two rows — each a real, separately-measurable data point.
-function groupInvestigations(runs: RunRow[]): Investigation[] {
+export function groupInvestigations(runs: RunRow[]): Investigation[] {
   const out: Investigation[] = [];
+  const measured = new Set<Investigation>();
+  let evidenceIds = new Set<string>();
   let cur: Investigation | null = null;
   for (const r of runs) {
     if (r.agent === 'evidence-collector' || cur === null) {
       cur = newInvestigation(r);
+      evidenceIds = new Set();
       out.push(cur);
     }
     cur.tokens += num(r.tokens);
@@ -82,6 +85,7 @@ function groupInvestigations(runs: RunRow[]): Investigation[] {
 
     if (r.agent === 'evidence-collector') {
       const ev = Array.isArray(r.output?.evidence) ? r.output.evidence : [];
+      evidenceIds = new Set(ev.map((e: { evidence_id: string }) => e.evidence_id));
       cur.evidence_facts = ev.length;
       const uc = Array.isArray(r.unsupported_claims) ? r.unsupported_claims : [];
       cur.dropped_facts = num(uc[0]?.dropped_facts_with_bad_citations);
@@ -89,21 +93,23 @@ function groupInvestigations(runs: RunRow[]): Investigation[] {
     } else if (r.agent === 'hypothesis-attack') {
       const hs: Hypo[] = Array.isArray(r.output?.hypotheses) ? r.output.hypotheses : [];
       cur.hypotheses = hs.length;
-      cur.grounded_hypotheses = hs.filter((h) => (h.citations?.length ?? 0) > 0).length;
+      cur.grounded_hypotheses = hs.filter((h) => (h.citations?.length ?? 0) > 0
+        && h.citations.every(c => evidenceIds.has(c))).length;
       cur.cited_evidence = new Set(hs.flatMap((h) => h.citations ?? [])).size;
     } else if (r.agent === 'verifier') {
+      if (r.status !== 'skipped') measured.add(cur);
       cur.supported = Array.isArray(r.output?.supported) ? r.output.supported.length : 0;
       const uc: Rejected[] = Array.isArray(r.unsupported_claims) ? r.unsupported_claims : [];
       cur.rejected = uc.length;
       cur.rejections = uc.map((u) => ({ statement: u.statement ?? '', reason: u.reason ?? '' }));
     } else if (r.agent === 'report-writer') {
-      cur.has_report = true;
+      cur.has_report = r.status !== 'skipped' && typeof r.output?.summary === 'string';
       cur.report_summary = typeof r.output?.summary === 'string' ? r.output.summary : null;
     }
   }
   // Only count investigations that actually reached the verifier (a complete
   // measurable unit); an evidence-only stub (e.g. an aborted run) is dropped.
-  return out.filter((i) => i.agents_seen.includes('verifier'));
+  return out.filter((i) => measured.has(i));
 }
 
 async function main(): Promise<void> {
@@ -206,7 +212,7 @@ async function main(): Promise<void> {
   console.log(`\nwrote ${OUT}`);
 }
 
-main()
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main()
   .catch((e) => {
     console.error(e);
     process.exitCode = 1;

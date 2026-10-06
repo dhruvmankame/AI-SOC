@@ -91,7 +91,10 @@ export async function insertEvidence(items: (EvidenceItem & { incident_id: strin
     await q(
       `insert into evidence (evidence_id, incident_id, kind, source_event_ids, fact, provenance, confidence)
        values ($1,$2,$3,$4::uuid[],$5,$6,$7)
-       on conflict (evidence_id) do update set fact = excluded.fact`,
+       on conflict (evidence_id) do update set
+         fact = excluded.fact, kind = excluded.kind,
+         source_event_ids = excluded.source_event_ids,
+         provenance = excluded.provenance, confidence = excluded.confidence`,
       [e.evidence_id, e.incident_id, e.kind, e.source_event_ids, e.fact, 'agent:evidence-collector', e.confidence],
     );
   }

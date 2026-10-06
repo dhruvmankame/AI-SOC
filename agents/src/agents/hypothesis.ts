@@ -57,13 +57,13 @@ export async function runHypothesisAgent(
     name: 'form_hypotheses',
   });
 
-  // Attach stable ids and keep only citations that reference real evidence.
-  const validEv = new Set(evidence.map((e) => e.evidence_id));
+  // Preserve every proposed citation so the verifier can reject mixed real and
+  // invented IDs rather than silently laundering the claim's grounding.
   const hypotheses: Hypothesis[] = parsed.hypotheses.map((h, i) => ({
     id: `H-${incidentCode}-${i + 1}`,
     statement: h.statement,
     technique: h.technique,
-    citations: h.citations.filter((c) => validEv.has(c)),
+    citations: h.citations,
     confidence: h.confidence,
     recommended_actions: h.recommended_actions,
   }));

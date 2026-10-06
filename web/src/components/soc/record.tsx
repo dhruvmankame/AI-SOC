@@ -1,28 +1,356 @@
+import { AgentWorkflow } from "./agent-workflow";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowUpRight, CheckCircle2, CircleDashed, Fingerprint, Network, ShieldCheck, XCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  CheckCircle2,
+  Fingerprint,
+  Network,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { fetchAgentRuns, fetchAttackKb, fetchEvidence, fetchIncident, fetchIncidentAlerts, fetchIncidentEntities, fetchTimeline, latestRun, type AgentRunRow, type AlertRow, type AttackKbRow, type EvidenceRow, type IncidentEntityRow, type IncidentRow, type RejectedClaim, type ReportOutput, type TimelineRow, type VerifierVerdict } from "@/lib/live-api";
+import {
+  fetchAgentRuns,
+  fetchAttackKb,
+  fetchEvidence,
+  fetchIncident,
+  fetchIncidentAlerts,
+  fetchIncidentEntities,
+  fetchTimeline,
+  latestRun,
+  type AgentRunRow,
+  type AlertRow,
+  type AttackKbRow,
+  type EvidenceRow,
+  type IncidentEntityRow,
+  type IncidentRow,
+  type RejectedClaim,
+  type TimelineRow,
+  type VerifierVerdict,
+} from "@/lib/live-api";
 import { EmptyState, SectionTitle, Severity } from "./layout";
 
-type RecordData={incident:IncidentRow|null;entities:IncidentEntityRow[];evidence:EvidenceRow[];runs:AgentRunRow[];timeline:TimelineRow[];alerts:AlertRow[];kb:Map<string,AttackKbRow>};
+type RecordData = {
+  incident: IncidentRow | null;
+  entities: IncidentEntityRow[];
+  evidence: EvidenceRow[];
+  runs: AgentRunRow[];
+  timeline: TimelineRow[];
+  alerts: AlertRow[];
+  kb: Map<string, AttackKbRow>;
+};
 
-export function Record({ incidentId }: { incidentId:string }) {
- const [data,setData]=useState<RecordData|null>(null);const [error,setError]=useState<string|null>(null);
- useEffect(()=>{let live=true;Promise.all([fetchIncident(incidentId),fetchIncidentEntities(incidentId),fetchEvidence(incidentId),fetchAgentRuns(incidentId),fetchTimeline(incidentId),fetchIncidentAlerts(incidentId),fetchAttackKb()]).then(([incident,entities,evidence,runs,timeline,alerts,kb])=>live&&setData({incident,entities,evidence,runs,timeline,alerts,kb})).catch((e)=>live&&setError(e instanceof Error?e.message:String(e)));return()=>{live=false}},[incidentId]);
- const reportRun=useMemo(()=>data?latestRun(data.runs,"report-writer"):undefined,[data]);
- const verifierRun=useMemo(()=>data?latestRun(data.runs,"verifier"):undefined,[data]);
- if(error) return <div className="panel-surface"><EmptyState title="Incident data unavailable" detail={error}/></div>;
- if(!data) return <div className="panel-surface"><EmptyState title="Loading incident record" detail="Reading evidence, verifier results, timeline, and agent audit…"/></div>;
- if(!data.incident) return <div className="panel-surface"><EmptyState title="Incident not found" detail="The incident ID is not present in the live database."/><div className="pb-6 text-center"><Link className="text-xs text-primary hover:underline" to="/incidents">Return to incidents</Link></div></div>;
- const inc=data.incident;const entities=data.entities;const alert=data.alerts[0];const tech=inc.mitre_techniques?.[0];const attack=(tech&&data.kb.get(tech)?.name)||inc.title||"Incident";
- const report=(reportRun?.output??{}) as ReportOutput;const verifierOutput=(verifierRun?.output??{}) as {verdicts?:VerifierVerdict[]};const verdicts=Array.isArray(verifierOutput.verdicts)?verifierOutput.verdicts:[];const rejected=Array.isArray(verifierRun?.unsupported_claims)?verifierRun!.unsupported_claims as RejectedClaim[]:[];const supported=verdicts.filter((v)=>v.supported);const investigated=data.runs.length>0;
- return <div className="space-y-5 entrance"><Link to="/incidents" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary"><ArrowLeft className="size-4"/> Back to incident queue</Link>
- <div className="panel-surface overflow-hidden"><div className="border-b border-border/70 px-6 py-6"><div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase text-faint"><span className="text-primary">Incident record</span><span>/</span><span>{inc.code??inc.incident_id.slice(0,8)}</span><span className="ml-auto">{inc.batch_id?"UPLOADED BATCH":"SEED BASELINE"}</span></div><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="max-w-3xl font-display text-2xl font-semibold leading-tight sm:text-[28px]">{attack}</h2><div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded border border-border bg-panel2/60 px-2 py-1 font-mono text-[10px] text-muted-foreground">MITRE ATT&CK · {tech??"—"}</span><Severity value={inc.status}/></div></div><div className="rounded-md border border-crit/30 bg-crit/10 px-4 py-3"><div className="font-mono text-[10px] uppercase text-crit">Risk score</div><div className="mt-1 font-display text-2xl font-semibold text-crit">{Math.round(inc.risk_score)}<span className="text-sm text-muted-foreground"> / 100</span></div></div></div></div><div className="grid divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0"><div className="px-6 py-4"><div className="font-mono text-[10px] uppercase text-faint">Alert confidence</div><div className="mono-number mt-2 text-sm">{alert?`${(alert.confidence*100).toFixed(1)}%`:"—"}</div></div><div className="px-6 py-4"><div className="font-mono text-[10px] uppercase text-faint">Associated flows</div><div className="mono-number mt-2 text-sm">{alert?.correlation_count.toLocaleString()??"—"}</div></div><div className="px-6 py-4"><div className="font-mono text-[10px] uppercase text-faint">Verifier outcome</div><div className="mt-2 text-sm text-muted-foreground">{verifierRun?`${supported.length} supported · ${rejected.length} rejected`:"Not investigated"}</div></div></div></div>
- <div className="grid gap-5 xl:grid-cols-12"><div className="space-y-5 xl:col-span-8"><section className="panel-surface overflow-hidden"><SectionTitle label="Investigation summary" aside="Evidence-grounded report status"/><div className="flex gap-3 p-5">{inc.summary?<CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary"/>:<CircleDashed className="mt-0.5 size-5 shrink-0 text-high"/>}<div><h3 className="text-sm font-medium">{inc.summary?"Verified incident report":"No verified report yet"}</h3><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{inc.summary??(rejected.length?"The verifier rejected the available hypothesis, so no unsupported narrative was written.":investigated?"The investigation ran but did not produce a report.":"The agents have not completed an investigation for this incident yet.")}</p>{report.narrative&&<p className="mt-3 text-xs leading-relaxed text-foreground">{report.narrative}</p>}{Array.isArray(report.recommended_actions)&&report.recommended_actions.length>0&&<ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">{report.recommended_actions.map((a,i)=><li key={i}>{a}</li>)}</ul>}</div></div></section>
- <section className="panel-surface overflow-hidden"><SectionTitle label="Verifier verdicts" aside="Only evidence-supported claims reach the report"/><div className="grid gap-3 p-5 sm:grid-cols-2"><div className="flex items-center gap-3 rounded border border-border bg-panel2/35 p-4"><CheckCircle2 className="size-5 text-primary"/><div><div className="font-display text-lg font-semibold">{supported.length}</div><div className="text-[11px] text-muted-foreground">Supported claims</div></div></div><div className="flex items-center gap-3 rounded border border-border bg-panel2/35 p-4"><XCircle className="size-5 text-crit"/><div><div className="font-display text-lg font-semibold">{rejected.length}</div><div className="text-[11px] text-muted-foreground">Rejected claims</div></div></div></div>{rejected.length>0&&<div className="space-y-2 px-5 pb-5">{rejected.map((r,i)=><div key={r.hypothesis_id??i} className="rounded border border-crit/20 bg-crit/5 p-3"><div className="text-xs font-medium text-foreground">{r.statement??"Rejected hypothesis"}</div><div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{r.reason??"Unsupported by cited evidence."}</div></div>)}</div>}</section>
- <section className="panel-surface overflow-hidden"><SectionTitle label="Evidence references" aside="Grounded facts collected by the evidence agent"/><div className="p-5">{data.evidence.length===0?<p className="text-xs text-muted-foreground">No agent evidence collected yet.</p>:<div className="space-y-3">{data.evidence.map((e)=><div key={e.evidence_id} className="rounded border border-border bg-panel2/35 p-3"><div className="flex items-center justify-between gap-3"><span className="font-mono text-[10px] text-primary">{e.evidence_id}</span><span className="font-mono text-[10px] text-faint">{Math.round(e.confidence*100)}%</span></div><p className="mt-2 text-xs leading-relaxed text-foreground">{e.fact}</p><div className="mt-2 flex flex-wrap gap-1.5">{(e.source_event_ids??[]).slice(0,8).map((id)=><span key={id} title={id} className="rounded border border-border bg-panel px-2 py-1 font-mono text-[10px] text-muted-foreground">{id.slice(0,8)}</span>)}</div></div>)}</div>}</div></section>
- {data.timeline.length>0&&<section className="panel-surface overflow-hidden"><SectionTitle label="Timeline" aside="Chronological grounded evidence"/><div className="divide-y divide-border/60">{data.timeline.map((t:TimelineRow)=><div key={t.id} className="grid gap-2 px-5 py-3 sm:grid-cols-[170px_1fr]"><span className="font-mono text-[10px] text-faint">{String(t.ts).replace("T"," ").slice(0,19)}</span><span className="text-xs text-muted-foreground">{t.label}</span></div>)}</div></section>}
- </div><div className="space-y-5 xl:col-span-4"><section className="panel-surface overflow-hidden"><SectionTitle label="Involved entities" aside="From correlated incident records"/><div className="divide-y divide-border/60 px-5">{entities.length===0?<p className="py-5 text-xs text-muted-foreground">No entities recorded.</p>:entities.map((e)=><div key={`${e.role}-${e.entity_value}`} className="flex items-start gap-3 py-3"><div className="flex size-8 shrink-0 items-center justify-center rounded border border-border bg-panel2 text-low"><Network className="size-4"/></div><div className="min-w-0"><div className="font-mono text-[10px] uppercase text-faint">{e.role??"entity"} / {e.entity_type}</div><div className="mt-1 break-all font-mono text-xs text-foreground">{e.entity_value}</div></div></div>)}</div></section>
- <section className="panel-surface overflow-hidden"><SectionTitle label="Detector signal" aside="Why this incident was surfaced"/><div className="p-5"><div className="flex items-center gap-2 font-mono text-xs text-high"><Fingerprint className="size-4"/>{alert?.detector??"No linked alert"}</div>{alert&&<div className="mt-5 space-y-3">{Object.entries(alert.contributions??{}).map(([key,value])=><div key={key}><div className="mb-1 flex justify-between gap-2 font-mono text-[10px]"><span className="truncate text-muted-foreground">{key}</span><span>{Math.round(Number(value)*100)}%</span></div><div className="h-1 bg-panel2"><div className="h-full bg-primary" style={{width:`${Math.min(100,Number(value)*100)}%`}}/></div></div>)}</div>}<Link to="/alerts" className="mt-5 inline-flex items-center gap-1 text-xs text-primary hover:underline">Open alert queue <ArrowUpRight className="size-3"/></Link></div></section>
- <section className="panel-surface overflow-hidden"><SectionTitle label="Agent audit" aside="Investigation trace"/><div className="p-5">{data.runs.length===0?<div className="flex gap-3"><ShieldCheck className="size-5 shrink-0 text-muted-foreground"/><p className="text-xs leading-relaxed text-muted-foreground">No agent executions recorded yet.</p></div>:<div className="space-y-3">{data.runs.map((r)=><div key={r.run_id} className="rounded border border-border bg-panel2/30 p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{r.agent}</span><span className="font-mono text-[10px] text-primary">{r.status}</span></div><div className="mt-2 font-mono text-[10px] text-faint">{r.tokens??0} tokens · {r.latency_ms??0} ms · {r.citations?.length??0} citations</div></div>)}</div>}</div></section></div></div></div>;
+export function Record({ incidentId }: { incidentId: string }) {
+  const [revision, setRevision] = useState(0);
+  const [data, setData] = useState<RecordData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      fetchIncident(incidentId),
+      fetchIncidentEntities(incidentId),
+      fetchEvidence(incidentId),
+      fetchAgentRuns(incidentId),
+      fetchTimeline(incidentId),
+      fetchIncidentAlerts(incidentId),
+      fetchAttackKb(),
+    ])
+      .then(
+        ([incident, entities, evidence, runs, timeline, alerts, kb]) =>
+          live && setData({ incident, entities, evidence, runs, timeline, alerts, kb }),
+      )
+      .catch((e) => live && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, [incidentId, revision]);
+  const verifierRun = useMemo(() => (data ? latestRun(data.runs, "verifier") : undefined), [data]);
+  if (error)
+    return (
+      <div className="panel-surface">
+        <EmptyState title="Incident data unavailable" detail={error} />
+      </div>
+    );
+  if (!data)
+    return (
+      <div className="panel-surface">
+        <EmptyState
+          title="Loading incident record"
+          detail="Reading evidence, verifier results, timeline, and agent audit…"
+        />
+      </div>
+    );
+  if (!data.incident)
+    return (
+      <div className="panel-surface">
+        <EmptyState
+          title="Incident not found"
+          detail="The incident ID is not present in the live database."
+        />
+        <div className="pb-6 text-center">
+          <Link className="text-xs text-primary hover:underline" to="/incidents">
+            Return to incidents
+          </Link>
+        </div>
+      </div>
+    );
+  const inc = data.incident;
+  const entities = data.entities;
+  const alert = data.alerts[0];
+  const tech = inc.mitre_techniques?.[0];
+  const attack = (tech && data.kb.get(tech)?.name) || inc.title || "Incident";
+  const verifierOutput = (verifierRun?.output ?? {}) as { verdicts?: VerifierVerdict[] };
+  const verdicts = Array.isArray(verifierOutput.verdicts) ? verifierOutput.verdicts : [];
+  const rejected = Array.isArray(verifierRun?.unsupported_claims)
+    ? (verifierRun!.unsupported_claims as RejectedClaim[])
+    : [];
+  const supported = verdicts.filter((v) => v.supported);
+  return (
+    <div className="space-y-5 entrance">
+      <Link
+        to="/incidents"
+        className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary"
+      >
+        <ArrowLeft className="size-4" /> Back to incident queue
+      </Link>
+      <div className="panel-surface overflow-hidden">
+        <div className="border-b border-border/70 px-6 py-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase text-faint">
+            <span className="text-primary">Incident record</span>
+            <span>/</span>
+            <span>{inc.code ?? inc.incident_id.slice(0, 8)}</span>
+            <span className="ml-auto">{inc.batch_id ? "UPLOADED BATCH" : "SEED BASELINE"}</span>
+          </div>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="max-w-3xl font-display text-2xl font-semibold leading-tight sm:text-[28px]">
+                {attack}
+              </h2>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded border border-border bg-panel2/60 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                  MITRE ATT&CK · {tech ?? "—"}
+                </span>
+                <Severity value={inc.status} />
+              </div>
+            </div>
+            <div className="rounded-md border border-crit/30 bg-crit/10 px-4 py-3">
+              <div className="font-mono text-[10px] uppercase text-crit">Risk score</div>
+              <div className="mt-1 font-display text-2xl font-semibold text-crit">
+                {Math.round(inc.risk_score)}
+                <span className="text-sm text-muted-foreground"> / 100</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <div className="px-6 py-4">
+            <div className="font-mono text-[10px] uppercase text-faint">Alert confidence</div>
+            <div className="mono-number mt-2 text-sm">
+              {alert ? `${(alert.confidence * 100).toFixed(1)}%` : "—"}
+            </div>
+          </div>
+          <div className="px-6 py-4">
+            <div className="font-mono text-[10px] uppercase text-faint">Associated flows</div>
+            <div className="mono-number mt-2 text-sm">
+              {alert?.correlation_count.toLocaleString() ?? "—"}
+            </div>
+          </div>
+          <div className="px-6 py-4">
+            <div className="font-mono text-[10px] uppercase text-faint">Verifier outcome</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {verifierRun
+                ? `${supported.length} supported · ${rejected.length} rejected`
+                : "Not investigated"}
+            </div>
+          </div>
+        </div>
+      </div>
+      <AgentWorkflow incidentId={incidentId} onUpdated={() => setRevision((n) => n + 1)} />
+      <div className="grid gap-5 xl:grid-cols-12">
+        <div className="space-y-5 xl:col-span-8">
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle
+              label="Verifier verdicts"
+              aside="Only evidence-supported claims reach the report"
+            />
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              <div className="flex items-center gap-3 rounded border border-border bg-panel2/35 p-4">
+                <CheckCircle2 className="size-5 text-primary" />
+                <div>
+                  <div className="font-display text-lg font-semibold">{supported.length}</div>
+                  <div className="text-[11px] text-muted-foreground">Supported claims</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded border border-border bg-panel2/35 p-4">
+                <XCircle className="size-5 text-crit" />
+                <div>
+                  <div className="font-display text-lg font-semibold">{rejected.length}</div>
+                  <div className="text-[11px] text-muted-foreground">Rejected claims</div>
+                </div>
+              </div>
+            </div>
+            {rejected.length > 0 && (
+              <div className="space-y-2 px-5 pb-5">
+                {rejected.map((r, i) => (
+                  <div
+                    key={r.hypothesis_id ?? i}
+                    className="rounded border border-crit/20 bg-crit/5 p-3"
+                  >
+                    <div className="text-xs font-medium text-foreground">
+                      {r.statement ?? "Rejected hypothesis"}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      {r.reason ?? "Unsupported by cited evidence."}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle
+              label="Evidence references"
+              aside="Grounded facts collected by the evidence agent"
+            />
+            <div className="p-5">
+              {data.evidence.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No agent evidence collected yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {data.evidence.map((e) => (
+                    <div
+                      key={e.evidence_id}
+                      className="rounded border border-border bg-panel2/35 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-[10px] text-primary">{e.evidence_id}</span>
+                        <span className="font-mono text-[10px] text-faint">
+                          {Math.round(e.confidence * 100)}%
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-foreground">{e.fact}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(e.source_event_ids ?? []).slice(0, 8).map((id) => (
+                          <span
+                            key={id}
+                            title={id}
+                            className="rounded border border-border bg-panel px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                          >
+                            {id.slice(0, 8)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+          {data.timeline.length > 0 && (
+            <section className="panel-surface overflow-hidden">
+              <SectionTitle label="Timeline" aside="Chronological grounded evidence" />
+              <div className="divide-y divide-border/60">
+                {data.timeline.map((t: TimelineRow) => (
+                  <div key={t.id} className="grid gap-2 px-5 py-3 sm:grid-cols-[170px_1fr]">
+                    <span className="font-mono text-[10px] text-faint">
+                      {String(t.ts).replace("T", " ").slice(0, 19)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{t.label}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+        <div className="space-y-5 xl:col-span-4">
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle label="Involved entities" aside="From correlated incident records" />
+            <div className="divide-y divide-border/60 px-5">
+              {entities.length === 0 ? (
+                <p className="py-5 text-xs text-muted-foreground">No entities recorded.</p>
+              ) : (
+                entities.map((e) => (
+                  <div key={`${e.role}-${e.entity_value}`} className="flex items-start gap-3 py-3">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded border border-border bg-panel2 text-low">
+                      <Network className="size-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-mono text-[10px] uppercase text-faint">
+                        {e.role ?? "entity"} / {e.entity_type}
+                      </div>
+                      <div className="mt-1 break-all font-mono text-xs text-foreground">
+                        {e.entity_value}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle label="Detector signal" aside="Why this incident was surfaced" />
+            <div className="p-5">
+              <div className="flex items-center gap-2 font-mono text-xs text-high">
+                <Fingerprint className="size-4" />
+                {alert?.detector ?? "No linked alert"}
+              </div>
+              {alert && (
+                <div className="mt-5 space-y-3">
+                  {Object.entries(alert.contributions ?? {}).map(([key, value]) => (
+                    <div key={key}>
+                      <div className="mb-1 flex justify-between gap-2 font-mono text-[10px]">
+                        <span className="truncate text-muted-foreground">{key}</span>
+                        <span>{Math.round(Number(value) * 100)}%</span>
+                      </div>
+                      <div className="h-1 bg-panel2">
+                        <div
+                          className="h-full bg-primary"
+                          style={{ width: `${Math.min(100, Number(value) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Link
+                to="/alerts"
+                className="mt-5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                Open alert queue <ArrowUpRight className="size-3" />
+              </Link>
+            </div>
+          </section>
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle label="Agent audit" aside="Investigation trace" />
+            <div className="p-5">
+              {data.runs.length === 0 ? (
+                <div className="flex gap-3">
+                  <ShieldCheck className="size-5 shrink-0 text-muted-foreground" />
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    No agent executions recorded yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.runs.map((r) => (
+                    <div key={r.run_id} className="rounded border border-border bg-panel2/30 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium">{r.agent}</span>
+                        <span className="font-mono text-[10px] text-primary">{r.status}</span>
+                      </div>
+                      <div className="mt-2 font-mono text-[10px] text-faint">
+                        {r.tokens ?? 0} tokens · {r.latency_ms ?? 0} ms · {r.citations?.length ?? 0}{" "}
+                        citations
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
 }

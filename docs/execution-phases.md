@@ -7,6 +7,31 @@
 > **Legend:** `[x]` done · `[~]` in progress · `[ ]` not started.
 > _Started 2026-09-28._
 
+## Completion update — 2026-10-05
+
+The entries below retain the historical run record. Current local completion:
+
+- `[x]` Phase 2 report paragraph and evaluation discussion: `docs/final-report.md`.
+- `[x]` Phase 5 architecture diagram: `docs/architecture.md` (Mermaid).
+- `[x]` Phase 5 reproducible setup, two-process instructions, demo script, and report.
+- `[x]` Database loader applies all migrations; seed replacement is explicit.
+- `[x]` Grounding fixes: reject mixed valid/invented source citations; preserve invalid
+  hypothesis citations for the verifier; refuse unrelated fallback events.
+- `[x]` Four-stage audit records include skipped agents; empty verified sets cannot
+  reach report generation. Evidence upserts refresh their source IDs on reruns.
+- `[x]` Evaluation resolves citation IDs and distinguishes skipped reports and verifiers.
+- `[x]` Uploads retain original filenames; background persistence errors are visible.
+- `[x]` Offline regression suite, backend/frontend type checks, production UI build.
+- `[x]` Demo expectations corrected: DDoS 1, brute-force 2, botnet 8 incidents under
+  the current annotation bridge. Historical full-capture results remain unchanged.
+- `[ ]` Fresh live upload → database → Gemini → report verification: this checkout
+  has no configured database/model credentials. No historical run is presented as new.
+- `[ ]` Credential rotation and a live demo recording require the account owner and
+  configured services. No public push or deployment was performed.
+
+Use `bash scripts/check.sh` for offline verification. See `docs/completion.md` for
+the handoff and live validation steps.
+
 ---
 
 ## Reality check (verified against the repo, not assumed)
@@ -166,5 +191,4 @@ remaining live-only confirmation is a fresh investigate pass once Gemini's 503 c
   pushed history.
 - Live investigation + demo uploads spend real Gemini free-tier quota; batched per
   decision #1. Full-file uploads trigger many incidents — use trimmed slices.
-
 
