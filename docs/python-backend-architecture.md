@@ -45,7 +45,7 @@ Run:
 ```bash
 bash scripts/run_python_backend.sh
 # frontend in another terminal
-npm --prefix web run dev
+npm --prefix frontend run dev
 ```
 
 Or:

@@ -91,9 +91,13 @@ async def insert_evidence(items: list[dict[str, Any]]) -> None:
             'confidence': e.get('confidence', 1.0),
             'created_at': iso_now(),
         }
+        # MongoDB rejects a path that appears in both $set and $setOnInsert.
+        # Keep created_at immutable: remove it from $set and write it only when
+        # the evidence document is first inserted.
+        created_at = doc.pop('created_at')
         await collection('evidence').update_one(
             {'evidence_id': e['evidence_id']},
-            {'$set': doc, '$setOnInsert': {'created_at': doc['created_at']}},
+            {'$set': doc, '$setOnInsert': {'created_at': created_at}},
             upsert=True,
         )
 

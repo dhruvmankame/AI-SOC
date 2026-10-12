@@ -1,0 +1,517 @@
+import { AgentWorkflow } from "./agent-workflow";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import {
+  ArrowRight,
+  CheckCircle2,
+  FileSpreadsheet,
+  Info,
+  Radio,
+  ScanSearch,
+  ShieldAlert,
+  UploadCloud,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  analyzeFile,
+  fetchJob,
+  isTerminal,
+  phaseLabels,
+  phaseProgress,
+  type AnalyzeResponse,
+  type Job,
+} from "@/lib/analyze-client";
+import { setActiveBatchId } from "@/lib/active-batch";
+import { SectionTitle, Severity } from "./layout";
+
+type Stage = "idle" | "uploading" | "analyzing" | "ready" | "error";
+
+export function Analyze() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [response, setResponse] = useState<AnalyzeResponse | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
+  const [stage, setStage] = useState<Stage>("idle");
+  const [uploadPct, setUploadPct] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Keeps the teacher/user on one page: findings scroll into view as soon as detection returns.
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!response) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function tick() {
+      if (!response) return;
+      try {
+        const next = await fetchJob(response.jobId);
+        if (!live) return;
+        setJob(next);
+
+        const terminal =
+          next.status === "complete" &&
+          next.incidents.every((incident) => isTerminal(incident.phase));
+
+        if (terminal) {
+          setStage("ready");
+        } else {
+          setStage("analyzing");
+          timer = setTimeout(tick, 1200);
+        }
+      } catch (e) {
+        if (live) setError(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    void tick();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [response]);
+
+  async function submit() {
+    if (!file || busy) return;
+
+    setBusy(true);
+    setError(null);
+    setResponse(null);
+    setJob(null);
+    setUploadPct(0);
+    setStage("uploading");
+
+    try {
+      const result = await analyzeFile(file, ({ percent }) => {
+        setUploadPct(percent);
+        setStage(percent >= 100 ? "analyzing" : "uploading");
+      });
+      setUploadPct(100);
+      setResponse(result);
+      setActiveBatchId(result.batchId);
+      setStage("analyzing");
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    } catch (e) {
+      setStage("error");
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const investigationPct = job
+    ? job.incidents.length === 0
+      ? job.status === "complete" ? 100 : 40
+      : Math.round(
+          job.incidents.reduce((sum, incident) => sum + phaseProgress[incident.phase], 0) /
+            job.incidents.length,
+        )
+    : 0;
+
+  // Browser upload is only the first 20% of the end-to-end workflow.
+  const endToEndPct =
+    stage === "idle"
+      ? 0
+      : stage === "uploading"
+        ? Math.round(uploadPct * 0.2)
+        : response
+          ? stage === "ready"
+            ? 100
+            : 50 + Math.round(investigationPct * 0.5)
+          : 35;
+
+  const stageText =
+    stage === "uploading"
+      ? `Uploading dataset · ${uploadPct}%`
+      : stage === "analyzing"
+        ? response
+          ? `Detection complete · investigation/report ${investigationPct}%`
+          : "Upload complete · running deterministic detection and correlation…"
+        : stage === "ready"
+          ? "Analysis complete · verified workflow terminal"
+          : stage === "error"
+            ? "Analysis failed"
+            : "Ready";
+
+  return (
+    <div className="space-y-5 entrance">
+      <div className="grid gap-5 xl:grid-cols-12">
+        <section className="panel-surface overflow-hidden xl:col-span-8">
+          <SectionTitle
+            label="Analyze network flows"
+            aside="Each uploaded CSV is analyzed as an independent dataset"
+          />
+          <div className="p-5">
+            <div className="flex min-h-[250px] flex-col items-center justify-center rounded-md border border-dashed border-primary/30 bg-primary/[.025] px-5 py-8 text-center">
+              <div className="mb-4 flex size-14 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
+                <UploadCloud className="size-6" strokeWidth={1.6} />
+              </div>
+              <h3 className="font-display text-lg font-medium">Flow log ready for inspection</h3>
+              <p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">
+                Upload one CICIDS/CICFlowMeter-style CSV. Its events, alerts and incidents stay
+                isolated from every other upload through its batch ID.
+              </p>
+
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                aria-label="Choose CSV flow log"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setError(null);
+                  setStage("idle");
+                  setUploadPct(0);
+                }}
+              />
+
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
+                  <FileSpreadsheet className="size-4" /> Choose CSV
+                </Button>
+                <Button onClick={submit} disabled={!file || busy}>
+                  <ScanSearch className="size-4" />
+                  {busy ? (stage === "uploading" ? "Uploading…" : "Analyzing…") : "Run analysis"}
+                </Button>
+              </div>
+
+              {file && (
+                <div className="mt-4 max-w-full truncate rounded border border-border bg-panel px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+                  {file.name} · {(file.size / 1024).toFixed(1)} KB
+                </div>
+              )}
+
+              {(busy || response) && (
+                <div className="mt-5 w-full max-w-xl text-left">
+                  <div className="mb-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-muted-foreground">
+                    <span>{stageText}</span>
+                    <span>{endToEndPct}% overall</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-panel2">
+                    <div
+                      className="h-full bg-primary transition-[width] duration-200"
+                      style={{ width: `${Math.max(0, Math.min(100, endToEndPct))}%` }}
+                    />
+                  </div>
+                  {stage === "analyzing" && (
+                    <p className="mt-2 text-[11px] text-faint">
+                      Upload is complete. Detection, persistence, verification and report generation
+                      continue below; 100% upload does not mean 100% analysis.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div
+                  role="alert"
+                  className="mt-4 w-full rounded border border-crit/30 bg-crit/10 p-3 text-left text-xs text-crit"
+                >
+                  {error}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel-surface overflow-hidden xl:col-span-4">
+          <SectionTitle
+            label="Meet your four agents"
+            aside="After CSV standardization and detection"
+          />
+          <div className="p-5">
+            {[
+              {
+                n: "01",
+                label: "Evidence collector",
+                text: "Reads incident events and signals; grounds facts in source event IDs",
+              },
+              {
+                n: "02",
+                label: "Hypothesis & ATT&CK",
+                text: "Forms attack hypotheses with evidence citations and technique mappings",
+              },
+              {
+                n: "03",
+                label: "Verify & score",
+                text: "Fail-closed verifier rejects uncited claims, then scores the survivors",
+              },
+              {
+                n: "04",
+                label: "Report",
+                text: "Writes the report automatically after verified findings survive the evidence gate",
+              },
+            ].map((s, i) => (
+              <div key={s.n} className="relative flex gap-3 pb-5 last:pb-0">
+                <div className="relative flex flex-col items-center">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded border border-primary/25 bg-primary/10 font-mono text-[10px] text-primary">
+                    {s.n}
+                  </span>
+                  {i < 3 && <span className="mt-1 h-full w-px bg-border" />}
+                </div>
+                <div className="pt-1">
+                  <div className="text-xs font-medium">{s.label}</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">{s.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {response && (
+        <div ref={resultRef} className="space-y-5 scroll-mt-4">
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle
+              label="Dataset analysis"
+              aside={`${response.stats.sourceFilename} · deterministic result in ${(response.stats.processingMs / 1000).toFixed(2)} s`}
+            />
+            <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Stored events", response.stats.storedEvents.toLocaleString()],
+                ["Detector signals", response.stats.signals.toLocaleString()],
+                ["Alerts", response.stats.alerts.toString()],
+                ["Incidents", response.stats.incidents.toString()],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-panel p-5">
+                  <div className="font-mono text-[10px] uppercase text-faint">{label}</div>
+                  <div className="mt-2 font-display text-2xl font-semibold">{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {response.eval && (
+              <div className="grid gap-3 border-t border-border p-5 sm:grid-cols-3">
+                <div className="rounded border border-border bg-panel2/30 p-3">
+                  <div className="font-mono text-[10px] uppercase text-faint">Precision</div>
+                  <div className="mt-1 text-lg">
+                    {((response.eval.precision ?? 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-panel2/30 p-3">
+                  <div className="font-mono text-[10px] uppercase text-faint">Recall</div>
+                  <div className="mt-1 text-lg">
+                    {((response.eval.recall ?? 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="rounded border border-border bg-panel2/30 p-3">
+                  <div className="font-mono text-[10px] uppercase text-faint">F1</div>
+                  <div className="mt-1 text-lg">{((response.eval.f1 ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {response.standardization && (
+            <section className="panel-surface overflow-hidden">
+              <SectionTitle
+                label="Stage 1 · Standardization"
+                aside={`${response.standardization.source_columns} source columns mapped to the canonical schema`}
+              />
+              <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Rows read", response.standardization.rows_read.toLocaleString()],
+                  [
+                    "Rows standardized",
+                    response.standardization.rows_standardized.toLocaleString(),
+                  ],
+                  [
+                    "Dropped (bad timestamp)",
+                    response.standardization.rows_dropped_unparseable_timestamp.toLocaleString(),
+                  ],
+                  [
+                    "Attack column",
+                    response.standardization.label_column_present ? "present" : "absent",
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-panel p-5">
+                    <div className="font-mono text-[10px] uppercase text-faint">{label}</div>
+                    <div className="mt-2 font-display text-xl font-semibold">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-border p-5">
+                <div className="mb-2 font-mono text-[10px] uppercase text-faint">
+                  Canonical field mapping
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(response.standardization.canonical_mapping).map(
+                    ([canonical, source]) => (
+                      <span
+                        key={canonical}
+                        className={`rounded border px-2 py-1 font-mono text-[10px] ${
+                          source
+                            ? "border-primary/25 bg-primary/10 text-primary"
+                            : "border-border bg-panel2/40 text-faint"
+                        }`}
+                      >
+                        {canonical} {source ? `← ${source}` : "← (not found)"}
+                      </span>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              {response.standardization.attack_classes.length > 0 && (
+                <div className="border-t border-border p-5">
+                  <div className="mb-3 font-mono text-[10px] uppercase text-faint">
+                    Attack classes found · corroboration by independent detectors
+                  </div>
+                  <div className="space-y-2">
+                    {response.standardization.attack_classes.map((c) => (
+                      <div
+                        key={c.attack_class}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-panel2/30 px-3 py-2"
+                      >
+                        <span className="text-xs font-medium">{c.attack_class}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {c.annotated_flows.toLocaleString()} flows · {c.corroboration_pct}%
+                          corroborated
+                          {c.corroboration_pct === 0 && " (dataset annotation only)"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                    Corroboration = share of annotated flows an independent behavioural detector
+                    also flagged. A 0% class is carried forward on the dataset&apos;s own label, not
+                    on independent detection — the verifier scores and labels it as such.
+                  </p>
+                </div>
+              )}
+
+              {response.standardization.incidents_truncated > 0 && (
+                <div className="border-t border-border p-5 text-xs text-high">
+                  {response.standardization.incidents_discovered} incidents were discovered; only
+                  the{" "}
+                  {response.standardization.incidents_discovered -
+                    response.standardization.incidents_truncated}{" "}
+                  highest-risk were kept for AI investigation to stay inside the LLM quota.{" "}
+                  {response.standardization.incidents_truncated} were not investigated.
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle
+              label="Detector findings"
+              aside={`${response.alerts.length} alert${response.alerts.length === 1 ? "" : "s"} in this dataset only`}
+            />
+            {response.alerts.length === 0 ? (
+              <p className="p-5 text-xs text-muted-foreground">
+                No configured attack pattern crossed the detector thresholds in this file.
+              </p>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {response.alerts.map((alert, index) => (
+                  <div
+                    key={`${alert.title}-${index}`}
+                    className="grid gap-3 p-5 md:grid-cols-[1fr_auto]"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Radio className="size-4 text-high" />
+                        <span className="text-sm font-medium">{alert.title}</span>
+                        <Severity value={alert.severity} />
+                      </div>
+                      <div className="mt-2 font-mono text-[10px] text-faint">
+                        {alert.detector} · {alert.entity} ·{" "}
+                        {alert.correlationCount.toLocaleString()} correlated flows
+                      </div>
+                    </div>
+                    <div className="font-mono text-sm text-primary">
+                      {(alert.confidence * 100).toFixed(1)}% confidence
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="panel-surface overflow-hidden">
+            <SectionTitle
+              label="Live investigation"
+              aside={`${response.incidents.length} incident${response.incidents.length === 1 ? "" : "s"} · ${job?.status ?? "inserting"}`}
+            />
+            {job?.error && (
+              <p role="alert" className="p-5 text-sm text-crit">
+                Dataset could not be saved: {job.error}
+              </p>
+            )}
+            {response.incidents.length === 0 ? (
+              <div className="p-5">
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 className="size-4 text-primary" />
+                  No attack incident was created for this dataset.
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {response.incidents.map((inc, incidentIndex) => {
+                  const current = job?.incidents.find((item) => item.incidentId === inc.incidentId);
+                  const phase = current?.phase ?? "queued";
+
+                  return (
+                    <div key={inc.incidentId} className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="size-4 text-high" />
+                            <div className="text-sm font-medium">{inc.attackType}</div>
+                          </div>
+                          <div className="mt-1 font-mono text-[10px] text-faint">
+                            {inc.code} · RISK {Math.round(inc.risk)}
+                          </div>
+                        </div>
+                        <span className="font-mono text-[11px] text-primary">
+                          {job?.status === "inserting"
+                            ? "Saving dataset"
+                            : isTerminal(phase)
+                              ? "Investigation workspace"
+                              : phaseLabels[phase]}
+                        </span>
+                      </div>
+
+                      <div className="mt-4">
+                        {incidentIndex === 0 ? (
+                          <AgentWorkflow incidentId={inc.incidentId} />
+                        ) : (
+                          <div className="rounded border border-border bg-panel2/30 p-3 text-[11px] text-muted-foreground">
+                            Running in the background. Live four-agent detail is shown above for the highest-risk incident to keep the dashboard responsive.
+                          </div>
+                        )}
+                      </div>
+
+                      {isTerminal(phase) && (
+                        <Link
+                          className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          to="/incidents/$incidentId"
+                          params={{ incidentId: inc.incidentId }}
+                        >
+                          Open full incident record <ArrowRight className="size-3" />
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      <div className="flex items-start gap-3 rounded-md border border-border bg-panel/45 p-4 text-xs leading-relaxed text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0 text-low" />
+        <p>
+          Detection results appear first and the AI section refreshes live on this same page.
+          Upload progress is separate from analysis progress. For uploaded datasets, Agent 4 runs
+          automatically only after the fail-closed verifier leaves supported findings.
+        </p>
+      </div>
+    </div>
+  );
+}

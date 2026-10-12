@@ -26,3 +26,10 @@ supabase/.temp/
 backend/.venv/
 backend/**/__pycache__/
 backend/.pytest_cache/
+
+# ---- panel/team cleanup
+archive/
+detail.txt
+.ai-soc-hotfix-backup-*/
+.ai-soc-refactor-backup-*/
+ai-soc-backup-*/

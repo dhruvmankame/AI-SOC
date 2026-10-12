@@ -1,3 +1,5 @@
+"""CRITICAL RUNTIME FILE: MongoDB connection, collections, and runtime indexes."""
+
 from __future__ import annotations
 
 from typing import Any

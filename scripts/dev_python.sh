@@ -5,7 +5,7 @@ cd "$ROOT"
 
 cleanup() {
   [[ -n "${BACK_PID:-}" ]] && kill "$BACK_PID" 2>/dev/null || true
-  [[ -n "${WEB_PID:-}" ]] && kill "$WEB_PID" 2>/dev/null || true
+  [[ -n "${FRONT_PID:-}" ]] && kill "$FRONT_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -17,7 +17,7 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-npm --prefix web run dev &
-WEB_PID=$!
+npm --prefix frontend run dev &
+FRONT_PID=$!
 
-wait -n "$BACK_PID" "$WEB_PID"
+wait -n "$BACK_PID" "$FRONT_PID"

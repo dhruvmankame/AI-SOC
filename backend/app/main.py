@@ -1,3 +1,13 @@
+"""AI-SOC FastAPI runtime entrypoint.
+
+CRITICAL RUNTIME FILE: HTTP API, dataset upload lifecycle, job state, MongoDB
+persistence handoff, and investigation orchestration live here.
+
+Upload pipeline:
+CSV -> deterministic detection -> persistence -> evidence -> hypothesis ->
+fail-closed verification -> report.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +29,7 @@ from fastapi.responses import JSONResponse
 from pymongo import ReplaceOne
 
 from .agents import run_report_writer
-from .config import ANALYZE_PY, CORS_ORIGINS, MAX_UPLOAD_MB, ML_DIR, MONGODB_DB
+from .config import AGENT_CONCURRENCY, ANALYZE_PY, CORS_ORIGINS, LLM_PROVIDER, MAX_UPLOAD_MB, ML_DIR, MONGODB_DB
 from .db import clean, close_db, collection, open_db
 from .graph import investigate_streaming
 from .llm import classify_llm_error
@@ -46,9 +56,9 @@ def now_ms() -> int:
 def llm_error_message(err: Exception | object) -> str:
     kind = classify_llm_error(err)
     if kind == 'overload':
-        return 'Gemini model overloaded (503 / high demand) — retry later'
+        return f'{LLM_PROVIDER.capitalize()} model overloaded (503 / high demand) — retry later'
     if kind == 'quota':
-        return 'Gemini quota / rate limit reached'
+        return f'{LLM_PROVIDER.capitalize()} quota / rate limit reached'
     return str(err)[:200]
 
 
@@ -200,7 +210,9 @@ async def run_investigations(job: dict[str, Any]) -> None:
                 incident_job['finishedAt'] = now_ms()
 
         try:
-            await investigate_streaming(incident_id, on_phase, auto_report=False)
+            # Uploaded datasets use one continuous demo pipeline. The report writer is
+            # still gated by the fail-closed verifier inside the investigation graph.
+            await investigate_streaming(incident_id, on_phase, auto_report=True)
         except Exception as exc:
             await record_failure(incident_id, incident_job['phase'], exc)
             incident_job['phase'] = 'error'

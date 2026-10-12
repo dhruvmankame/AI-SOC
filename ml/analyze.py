@@ -49,7 +49,7 @@ CAP_PER_INCIDENT = 80           # stored attack events per incident (agent reads
 ALERT_EVENT_CAP = 60            # alert.event_ids cap == getIncidentEvents default limit
 CAP_BENIGN = 300                # small benign context sample (display only; eval uses ALL flows)
 CAP_ENTITY_SET = 12             # capped distinct srcs listed as flood actors / beacon victims
-MAX_INCIDENTS = 12              # auto-investigation spends LLM quota per incident; a
+MAX_INCIDENTS = max(1, int(os.getenv('MAX_AI_INCIDENTS', '4')))  # cap expensive AI investigations; a
                                 # many-class dataset is truncated to the top-N by risk and
                                 # the drop is reported (never silently).
 
