@@ -123,7 +123,7 @@ export function analyzeFile(
     xhr.onerror = () => {
       reject(
         new Error(
-          "The local analysis service is unavailable. Check the agents service and CORS settings.",
+          "The local analysis service is unavailable. Check the Python backend and CORS settings.",
         ),
       );
     };

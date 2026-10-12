@@ -4,8 +4,8 @@ analyze.py  (AI-SOC) — analyze ONE uploaded flow CSV -> JSON (no DB, no SQL).
 
 The seed pipeline (ingest_cicids.py) is a fixed 3-file CICIDS demo. This is its
 dynamic sibling: one uploaded CICFlowMeter/CICIDS flow CSV in, a batch of
-DYNAMICALLY-DISCOVERED incidents out, as JSON on stdout. The Node backend
-(agents/src/server.ts) does the actual DB writes (the browser is RLS read-only
+DYNAMICALLY-DISCOVERED incidents out, as JSON on stdout. The Python FastAPI backend
+(backend/app/main.py) does the actual DB writes (the browser is RLS read-only
 and Python is stdlib-only — no psycopg), then auto-runs the agent graph.
 
 Reuses the SAME behavioural detectors as the seed via soccore (nothing here

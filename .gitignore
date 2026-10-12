@@ -23,3 +23,6 @@ data/cicids/*.zip
 # ---- supabase local
 supabase/.branches/
 supabase/.temp/
+backend/.venv/
+backend/**/__pycache__/
+backend/.pytest_cache/

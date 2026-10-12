@@ -1,5 +1,27 @@
 # AI-SOC
 
+
+## Python backend (current)
+
+The active backend has been migrated from Node.js/Express/LangGraph.js to Python/FastAPI/LangGraph.
+The React/TanStack frontend is unchanged and still calls `VITE_ANALYZE_API` on port 8787.
+The legacy Node backend is retained under `legacy/` for reference.
+
+Run the backend with:
+
+```sh
+bash scripts/run_python_backend.sh
+```
+
+Run backend + frontend together with:
+
+```sh
+bash scripts/dev_python.sh
+```
+
+See `docs/python-backend-architecture.md`.
+
+
 An evidence-grounded multi-agent Security Operations Center for network-flow telemetry.
 
 Detection is deterministic Python. Investigation is a LangGraph.js agent graph whose
