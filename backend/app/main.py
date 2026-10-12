@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from pymongo import ReplaceOne
 
 from .agents import run_report_writer
-from .config import AGENT_CONCURRENCY, ANALYZE_PY, CORS_ORIGINS, LLM_PROVIDER, MAX_UPLOAD_MB, ML_DIR, MONGODB_DB
+from .config import AGENT_CONCURRENCY, ANALYZE_PY, CORS_ORIGINS, LLM_PROVIDER, MAX_AI_INCIDENTS, MAX_UPLOAD_MB, ML_DIR, MONGODB_DB
 from .db import clean, close_db, collection, open_db
 from .graph import investigate_streaming
 from .llm import classify_llm_error
@@ -189,39 +189,98 @@ async def record_failure(incident_id: str, phase: str, err: Exception | object) 
 
 
 async def run_investigations(job: dict[str, Any]) -> None:
+    """Run only the highest-risk incidents automatically.
+
+    AI-SOC FINALIZATION:
+    - every deterministic incident is already persisted
+    - top MAX_AI_INCIDENTS enter the LLM plane automatically
+    - remaining incidents are terminal for the upload job but stay open for
+      manual investigation
+    - AGENT_CONCURRENCY bounds concurrent incident workflows
+    """
     job['status'] = 'investigating'
     if job.get('batchId'):
-        await collection('ingest_batches').update_one({'batch_id': job['batchId']}, {'$set': {'status': 'investigating'}})
+        await collection('ingest_batches').update_one(
+            {'batch_id': job['batchId']},
+            {'$set': {'status': 'investigating'}},
+        )
 
+    ordered = sorted(
+        job['incidents'],
+        key=lambda item: (-float(item.get('risk') or 0), str(item.get('incidentId') or '')),
+    )
+    selected = ordered[:MAX_AI_INCIDENTS]
+    selected_ids = {item['incidentId'] for item in selected}
+
+    # Stored but intentionally not auto-investigated. The Incident Record can
+    # still launch a manual investigation later.
     for incident_job in job['incidents']:
-        incident_id = incident_job['incidentId']
-        existing = await collection('incidents').find_one({'incident_id': incident_id}, {'_id': 0, 'summary': 1})
-        if existing and existing.get('summary'):
-            incident_job['phase'] = 'done_with_report'
+        if incident_job['incidentId'] not in selected_ids:
+            incident_job['phase'] = 'not_selected'
             incident_job['finishedAt'] = now_ms()
-            continue
 
-        incident_job['phase'] = 'collecting'
-        incident_job['startedAt'] = now_ms()
+    semaphore = asyncio.Semaphore(AGENT_CONCURRENCY)
 
-        def on_phase(progress: dict[str, Any]) -> None:
-            incident_job['phase'] = progress['phase']
-            if progress['phase'] in {'ready_for_report', 'done_with_report', 'done_no_report'}:
+    async def investigate_one(incident_job: dict[str, Any]) -> None:
+        async with semaphore:
+            incident_id = incident_job['incidentId']
+            existing = await collection('incidents').find_one(
+                {'incident_id': incident_id},
+                {'_id': 0, 'summary': 1},
+            )
+            if existing and existing.get('summary'):
+                incident_job['phase'] = 'done_with_report'
                 incident_job['finishedAt'] = now_ms()
+                return
 
-        try:
-            # Uploaded datasets use one continuous demo pipeline. The report writer is
-            # still gated by the fail-closed verifier inside the investigation graph.
-            await investigate_streaming(incident_id, on_phase, auto_report=True)
-        except Exception as exc:
-            await record_failure(incident_id, incident_job['phase'], exc)
-            incident_job['phase'] = 'error'
-            incident_job['error'] = llm_error_message(exc)
-            incident_job['finishedAt'] = now_ms()
+            incident_job['phase'] = 'collecting'
+            incident_job['startedAt'] = now_ms()
+
+            def on_phase(progress: dict[str, Any]) -> None:
+                incident_job['phase'] = progress['phase']
+                if progress['phase'] in {
+                    'ready_for_report',
+                    'done_with_report',
+                    'done_no_report',
+                }:
+                    incident_job['finishedAt'] = now_ms()
+
+            try:
+                await investigate_streaming(incident_id, on_phase, auto_report=True)
+                if incident_job.get('phase') == 'done_no_report':
+                    await collection('incidents').update_one(
+                        {'incident_id': incident_id},
+                        {'$set': {
+                            'status': 'review_required',
+                            'updated_at': iso_now(),
+                        }},
+                    )
+            except Exception as exc:
+                await record_failure(incident_id, incident_job['phase'], exc)
+                incident_job['phase'] = 'error'
+                incident_job['error'] = llm_error_message(exc)
+                incident_job['finishedAt'] = now_ms()
+                await collection('incidents').update_one(
+                    {'incident_id': incident_id},
+                    {'$set': {
+                        'status': 'investigation_error',
+                        'updated_at': iso_now(),
+                    }},
+                )
+
+    if selected:
+        await asyncio.gather(*(investigate_one(item) for item in selected))
 
     job['status'] = 'complete'
     if job.get('batchId'):
-        await collection('ingest_batches').update_one({'batch_id': job['batchId']}, {'$set': {'status': 'complete'}})
+        await collection('ingest_batches').update_one(
+            {'batch_id': job['batchId']},
+            {'$set': {
+                'status': 'complete',
+                'auto_investigated': len(selected),
+                'stored_incidents': len(job['incidents']),
+            }},
+        )
 
 
 async def persist_and_investigate(job_id: str, batch_id: str, data: dict[str, Any]) -> None:

@@ -1,7 +1,24 @@
 # Project Structure
 
-A new developer should follow this dependency path:
+Follow this runtime dependency path:
 
-`frontend/src/components/soc/analyze.tsx` -> `frontend/src/lib/analyze-client.ts` -> `backend/app/main.py` -> `ml/analyze.py` -> `ml/soccore.py` -> `backend/app/db.py` -> `backend/app/graph.py` -> `backend/app/agents.py`.
+`frontend/src/components/soc/analyze.tsx`
+→ `frontend/src/lib/analyze-client.ts`
+→ `backend/app/main.py`
+→ `ml/analyze.py`
+→ `ml/soccore.py`
+→ `backend/app/db.py`
+→ `backend/app/graph.py`
+→ `backend/app/agents.py`
+→ `backend/app/tools.py`
 
-Folder ownership is intentionally simple: browser code in `frontend`, APIs/persistence/agents in `backend`, deterministic detection in `ml`, datasets in `data`, documentation in `docs`, commands in `scripts`, and all obsolete architectures in `archive`.
+Folder ownership:
+
+- `frontend/` — analyst UI
+- `backend/` — FastAPI, MongoDB, workflow orchestration and agents
+- `ml/` — deterministic detection plus offline MLP evaluation
+- `data/` — CICIDS demo/evaluation artifacts
+- `docs/` — architecture, demo and report material
+- `scripts/` — setup, run and validation commands
+
+The active runtime does **not** depend on the old Node/Supabase architecture.

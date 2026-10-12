@@ -1,34 +1,34 @@
-# AI-SOC Python backend architecture
+# AI-SOC Python Backend Architecture
 
-The runtime backend is Python. The React/TanStack frontend keeps the same REST contract and
-continues to use `VITE_ANALYZE_API=http://127.0.0.1:8787`.
+The active backend is **FastAPI + MongoDB + Python LangGraph**.
 
 ```text
-React/TanStack UI
-       |
-       | HTTP /api/*
-       v
-FastAPI (Python, local-only :8787)
-       |
-       +--> ml/analyze.py
-       |      normalize -> deterministic detectors -> correlate incidents
-       |
-       +--> Supabase PostgreSQL
-       |      events / signals / alerts / incidents / evidence / agent_runs
-       |
-       +--> Python LangGraph multi-agent investigation
-              Agent 1 Evidence Collector
-                  |
-              Agent 2 Hypothesis + MITRE
-                  |
-              Agent 3 Fail-closed Verifier
-                  |
-              human-controlled report gate
-                  |
-              Agent 4 Report Writer
+React / TanStack Start
+        |
+        | HTTP /api/*
+        v
+FastAPI (127.0.0.1:8787)
+        |
+        +--> ml/analyze.py
+        |      normalize -> detect -> signals -> alerts -> incidents
+        |
+        +--> MongoDB
+        |      all deterministic incidents are persisted
+        |
+        +--> highest-risk MAX_AI_INCIDENTS
+               |
+               +--> Evidence Collector
+               +--> Hypothesis + ATT&CK
+               +--> Fail-closed Verifier
+               +--> Report Writer
 ```
 
-The migration preserves these frontend-facing routes:
+The LLM provider is selectable with `LLM_PROVIDER=gemini|groq`.
+
+`AGENT_CONCURRENCY` controls concurrent incident workflows. Gemini defaults to one
+incident at a time; Groq can use a larger value.
+
+Main routes:
 
 - `GET /api/health`
 - `POST /api/analyze`
@@ -36,20 +36,19 @@ The migration preserves these frontend-facing routes:
 - `GET /api/incidents/{incident_id}/workflow`
 - `POST /api/incidents/{incident_id}/investigate`
 - `POST /api/incidents/{incident_id}/report`
+- `GET /api/data/*`
 
-The backend remains bound to `127.0.0.1`. Do not expose it publicly without authentication,
-authorization, durable job state, and production upload isolation.
-
-Run:
+Run backend:
 
 ```bash
 bash scripts/run_python_backend.sh
-# frontend in another terminal
-npm --prefix frontend run dev
 ```
 
-Or:
+Run frontend separately:
 
 ```bash
-bash scripts/dev_python.sh
+cd frontend
+npm run dev
 ```
+
+Do not expose this unauthenticated local backend directly to the public internet.

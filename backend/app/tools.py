@@ -123,7 +123,7 @@ async def write_report(incident_id: str, summary: str, mitre_techniques: list[st
         {'$set': {
             'summary': summary,
             'mitre_techniques': mitre_techniques,
-            'status': 'investigating',
+            'status': 'investigated',
             'updated_at': iso_now(),
         }},
     )

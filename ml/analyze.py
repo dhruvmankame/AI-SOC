@@ -49,9 +49,9 @@ CAP_PER_INCIDENT = 80           # stored attack events per incident (agent reads
 ALERT_EVENT_CAP = 60            # alert.event_ids cap == getIncidentEvents default limit
 CAP_BENIGN = 300                # small benign context sample (display only; eval uses ALL flows)
 CAP_ENTITY_SET = 12             # capped distinct srcs listed as flood actors / beacon victims
-MAX_INCIDENTS = max(1, int(os.getenv('MAX_AI_INCIDENTS', '4')))  # cap expensive AI investigations; a
-                                # many-class dataset is truncated to the top-N by risk and
-                                # the drop is reported (never silently).
+# AI quota is intentionally NOT enforced in the detection layer. Every incident
+# discovered by deterministic detection is returned for persistence. The FastAPI
+# backend selects only the highest-risk MAX_AI_INCIDENTS for automatic LLM work.
 
 
 def fail(msg):
@@ -127,13 +127,10 @@ def _build(inc, events, signals, batch_id, label, path, cm, has_label, std):
         a["risk"] = round(min(96.0, 60 + 12 * math.log10(a["flow_count"] + 1)), 1)
     # order by risk desc so INC-...-NNN codes rank most-severe first; deterministic
     items.sort(key=lambda a: (-a["risk"], FAMILY_PRIORITY[a["family"]], str(a["key"])))
-    # Auto-investigation spends LLM quota per incident. A dataset with many
-    # attack classes is truncated to the highest-risk MAX_INCIDENTS, and the
-    # drop is REPORTED (never silent) so the UI can say what was not analysed.
+    # Detection plane is complete: keep every discovered incident. Expensive AI
+    # selection is performed later by backend/app/main.py, not here.
     std["incidents_discovered"] = len(items)
-    std["incidents_truncated"] = max(0, len(items) - MAX_INCIDENTS)
-    if std["incidents_truncated"]:
-        items = items[:MAX_INCIDENTS]
+    std["incidents_truncated"] = 0
 
     bhex = batch_id.replace("-", "")[:6]        # per-batch discriminator: code is UNIQUE globally
     day = datetime.now(timezone.utc).strftime("%Y%m%d")

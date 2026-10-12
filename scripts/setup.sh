@@ -9,4 +9,4 @@ backend/.venv/bin/pip install -r backend/requirements.txt
 if [[ -f frontend/package-lock.json ]]; then npm --prefix frontend ci; else npm --prefix frontend install; fi
 [[ -f .env ]] || cp .env.example .env
 [[ -f frontend/.env.local ]] || cp frontend/.env.example frontend/.env.local
-echo "Setup complete. Fill MONGODB_URI and GEMINI_API_KEY in .env, then run bash scripts/dev_python.sh"
+echo "Setup complete. Fill MONGODB_URI and your selected LLM key in .env, then run bash scripts/dev_python.sh"

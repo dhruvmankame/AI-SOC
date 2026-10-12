@@ -2,6 +2,7 @@ const BASE = import.meta.env["VITE_ANALYZE_API"] || "http://127.0.0.1:8787";
 
 export type Phase =
   | "queued"
+  | "not_selected"
   | "collecting"
   | "hypothesizing"
   | "verifying"
@@ -162,6 +163,7 @@ export async function fetchJob(id: string): Promise<Job> {
 
 export const phaseLabels: Record<Phase, string> = {
   queued: "Queued",
+  not_selected: "Stored · manual investigation available",
   collecting: "Collecting evidence",
   hypothesizing: "Forming hypotheses",
   verifying: "Verifying against evidence",
@@ -174,6 +176,7 @@ export const phaseLabels: Record<Phase, string> = {
 
 export const phaseProgress: Record<Phase, number> = {
   queued: 5,
+  not_selected: 100,
   collecting: 25,
   hypothesizing: 45,
   verifying: 65,
@@ -185,7 +188,7 @@ export const phaseProgress: Record<Phase, number> = {
 };
 
 export const isTerminal = (phase: Phase) =>
-  ["ready_for_report", "done_with_report", "done_no_report", "error"].includes(phase);
+  ["not_selected", "ready_for_report", "done_with_report", "done_no_report", "error"].includes(phase);
 
 export type WorkflowStage = {
   agent: string;

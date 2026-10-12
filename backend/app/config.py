@@ -49,6 +49,12 @@ LLM_MIN_INTERVAL_SECONDS = max(0.0, float(os.getenv('LLM_MIN_INTERVAL_SECONDS', 
 _default_agent_concurrency = '3' if LLM_PROVIDER == 'groq' else '1'
 AGENT_CONCURRENCY = max(1, int(os.getenv('AGENT_CONCURRENCY', _default_agent_concurrency)))
 
+# Detection and AI selection are deliberately separate. The detector persists
+# every incident it discovers; only the highest-risk N incidents automatically
+# enter the expensive LLM investigation plane. The rest remain available for a
+# manual investigation from the Incident Record page.
+MAX_AI_INCIDENTS = max(1, int(os.getenv('MAX_AI_INCIDENTS', '4')))
+
 AGENT_MAX_STEPS = int(os.getenv('AGENT_MAX_STEPS', '18'))
 AGENT_MAX_TOKENS = int(os.getenv('AGENT_MAX_TOKENS', '120000'))
 
@@ -59,7 +65,7 @@ CORS_ORIGINS = [
     x.strip()
     for x in os.getenv(
         'CORS_ORIGIN',
-        'http://localhost:5173,http://127.0.0.1:5173',
+        'http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173',
     ).split(',')
     if x.strip()
 ]

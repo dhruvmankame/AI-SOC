@@ -470,9 +470,11 @@ export function Analyze() {
                         <span className="font-mono text-[11px] text-primary">
                           {job?.status === "inserting"
                             ? "Saving dataset"
-                            : isTerminal(phase)
-                              ? "Investigation workspace"
-                              : phaseLabels[phase]}
+                            : phase === "not_selected"
+                              ? phaseLabels[phase]
+                              : isTerminal(phase)
+                                ? "Investigation workspace"
+                                : phaseLabels[phase]}
                         </span>
                       </div>
 
@@ -481,7 +483,9 @@ export function Analyze() {
                           <AgentWorkflow incidentId={inc.incidentId} />
                         ) : (
                           <div className="rounded border border-border bg-panel2/30 p-3 text-[11px] text-muted-foreground">
-                            Running in the background. Live four-agent detail is shown above for the highest-risk incident to keep the dashboard responsive.
+                            {phase === "not_selected"
+                              ? "Stored as a correlated incident but not auto-investigated because the AI quota is reserved for the highest-risk cases. Open the incident record to investigate it manually."
+                              : "Running in the background. Live four-agent detail is shown above for the highest-risk incident to keep the dashboard responsive."}
                           </div>
                         )}
                       </div>
